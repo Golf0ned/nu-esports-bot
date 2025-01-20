@@ -11,6 +11,7 @@ GUILD_ID = os.getenv('GUILD_ID')
 bot = discord.Bot()
 
 cogs_list = [
+    'gameroom',
     'valorant',
 ]
 

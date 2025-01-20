@@ -9,6 +9,7 @@ import dotenv
 dotenv.load_dotenv()
 GUILD_ID = os.getenv('GUILD_ID')
 
+
 AGENTS = [
     'Brimstone',
     'Viper',

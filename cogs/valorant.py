@@ -68,7 +68,7 @@ def setup(bot):
 class ValorantStackView(discord.ui.View):
 
     def __init__(self, embed):
-        super().__init__()
+        super().__init__(timeout=1200)
         self.embed = embed
         self.joined = {}
     
@@ -83,6 +83,10 @@ class ValorantStackView(discord.ui.View):
 
         self.embed.remove_field(0)
         self.embed.add_field(name=name, value=field_value)
+
+    async def on_timeout(self):
+        self.disable_all_items()
+        await self.message.edit(view=self)
 
     @discord.ui.button(label='Join', style=discord.ButtonStyle.green)
     async def join_callback(self, button, interaction):

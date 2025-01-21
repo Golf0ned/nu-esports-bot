@@ -23,7 +23,7 @@ class Valorant(commands.Cog):
             title='Valorant Stack',
             color=discord.Color.from_rgb(78, 42, 132),
         )
-        embed.add_field(name=':green_square::white_medium_square::white_medium_square::white_medium_square::white_medium_square:', value=ctx.author.display_name)
+        embed.add_field(name=':white_medium_square::white_medium_square::white_medium_square::white_medium_square::white_medium_square:', value='empty :/')
         await ctx.respond(embed=embed, view=ValorantStackView(embed))
 
     @valorant.command(name='random-lobby', description='Generates a randomized Valorant lobby', guild_ids=[GUILD_ID])

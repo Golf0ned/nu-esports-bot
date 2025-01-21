@@ -27,10 +27,11 @@ class Valorant(commands.Cog):
                 choices=['active', 'newest', 'all'],
                 default='all',
             ),
-            team_flags: discord.Option(str,
-                                       name='teams',
-                                       choices=['role-balanced', 'random'],
-                                       default='role-balanced',
+            team_flags: discord.Option(
+                str,
+                name='teams',
+                choices=['role-balanced', 'random'],
+                default='role-balanced',
             ),
     ):
         map = random_map(map_flags)

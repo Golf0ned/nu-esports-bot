@@ -71,18 +71,20 @@ class ValorantStackView(discord.ui.View):
         super().__init__(timeout=1200)
         self.embed = embed
         self.joined = {}
+        self.pinged = False
     
     def update_embed(self):
-        field_value = '\n'.join(self.joined.values()) if self.joined else 'empty :/'
-
-        # Add a green square per person joined, yellow square per person over 5, and white square per empty slot
+        # Title: add a green square per person joined, yellow square per person over 5, and white square per empty slot
         num_joined = len(self.joined)
         name = ''.join([':green_square:' if i < 5 else ':yellow_square:' for i in range(num_joined)])
         if num_joined < 5:
             name += ''.join([':white_medium_square:' for _ in range(5 - num_joined)])
 
+        # Value: display name of every user
+        value = '\n'.join(user.mention for user in self.joined.values()) if self.joined else 'empty :/'
+
         self.embed.remove_field(0)
-        self.embed.add_field(name=name, value=field_value)
+        self.embed.add_field(name=name, value=value)
 
     async def on_timeout(self):
         self.disable_all_items()
@@ -90,9 +92,13 @@ class ValorantStackView(discord.ui.View):
 
     @discord.ui.button(label='Join', style=discord.ButtonStyle.green)
     async def join_callback(self, button, interaction):
-        self.joined[interaction.user.id] = interaction.user.display_name
+        self.joined[interaction.user.id] = interaction.user
         self.update_embed()
         await interaction.response.edit_message(embed=self.embed)
+
+        if not self.pinged and len(self.joined) >= 5:
+            self.pinged = True
+            await interaction.followup.send(''.join(user.mention for user in self.joined.values()))
 
     @discord.ui.button(label='Leave', style=discord.ButtonStyle.red)
     async def leave_callback(self, button, interaction):

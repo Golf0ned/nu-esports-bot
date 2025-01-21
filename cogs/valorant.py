@@ -33,12 +33,14 @@ class Valorant(commands.Cog):
             map_flags: discord.Option(
                 str,
                 name='maps',
+                description='Map pool used for randomization (default all)',
                 choices=['active', 'newest', 'all'],
                 default='all',
             ),
             team_flags: discord.Option(
                 str,
                 name='teams',
+                description='Agent selection used for randomization (default role-balanced)',
                 choices=['role-balanced', 'random'],
                 default='role-balanced',
             ),
@@ -77,7 +79,7 @@ class ValorantStackView(discord.ui.View):
         num_joined = len(self.joined)
         name = ''.join([':green_square:' if i < 5 else ':yellow_square:' for i in range(num_joined)])
         if num_joined < 5:
-            name += ''.join([':white_medium_square:' for i in range(5 - num_joined)])
+            name += ''.join([':white_medium_square:' for _ in range(5 - num_joined)])
 
         self.embed.remove_field(0)
         self.embed.add_field(name=name, value=field_value)

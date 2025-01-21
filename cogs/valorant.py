@@ -67,7 +67,7 @@ class Valorant(commands.Cog):
         
     valorant = discord.SlashCommandGroup('valorant', 'Valorant-related utils')
 
-    @valorant.command(description='Generates a randomized Valorant lobby', guild_ids=[GUILD_ID])
+    @valorant.command(name='random-lobby', description='Generates a randomized Valorant lobby', guild_ids=[GUILD_ID])
     async def random_lobby(
             self,
             ctx,

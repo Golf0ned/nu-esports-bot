@@ -16,7 +16,7 @@ class Gameroom(commands.Cog):
 
     gameroom = discord.SlashCommandGroup('gameroom', 'Game Room and Nexus Gaming Lounge commands')
 
-    @gameroom.command(description='Lists current game room hours', guild_ids=[GUILD_ID])
+    @gameroom.command(name='hours', description='Lists current game room hours', guild_ids=[GUILD_ID])
     async def hours(self, ctx):
         hours = {
             'Sunday': '2:30 PM - 11:00 PM',

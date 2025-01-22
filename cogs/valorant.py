@@ -96,7 +96,7 @@ class ValorantStackView(discord.ui.View):
         self.update_embed()
         await interaction.response.edit_message(embed=self.embed)
 
-        if not self.pinged and len(self.joined) >= 1:
+        if not self.pinged and len(self.joined) >= 5:
             self.pinged = True
             await interaction.followup.send(''.join(user.mention for user in self.joined.values()))
 

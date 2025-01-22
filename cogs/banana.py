@@ -22,8 +22,8 @@ class Banana(commands.Cog):
         )
         counter = 0
 
-        embed.set_image(https://gifdb.com/images/high/banana-cat-meme-crying-in-sadness-8n6s9vqzg5ede4u1.webp)
-        embed.add_field(name= 'how many times has banana jumped?: ', value= counter)
+        embed.set_image("https://gifdb.com/images/high/banana-cat-meme-crying-in-sadness-8n6s9vqzg5ede4u1.webp")
+        embed.add_field(name= 'how many times has banana jumped?: ', value= counter, inline=True)
 
         await ctx.respond(embed=embed, view=CounterUpdate(embed))
 
@@ -37,11 +37,13 @@ class CounterUpdate(discord.ui.View):
         super().__init__(timeout=1200)
         self.embed = embed
 
+        counter = 0
+
     def update_counter(self):
         counter += 1
 
         self.embed.remove_field(0)
-        self.embed.add_field(name= 'how many times has banana jumped?: ', value= counter)
+        self.embed.add_field(name= 'how many times has banana jumped?: ', value= counter, inline=True)
 
     @discord.ui.button(Label= ':banana: Jumpin?', style=discord.ButtonStyle.yellow)
     async def counting_up(self, button, interaction):

@@ -121,8 +121,7 @@ class ValorantStackView(discord.ui.View):
     @discord.ui.button(label='Bump!', style=discord.ButtonStyle.grey)
     async def refresh_callback(self, button, interaction):
         await interaction.response.send_message(embed=self.embed, view=self)
-        self.disable_all_items()
-        await self.message.edit(view=self)
+        await self.message.delete()
 
 def random_map(flags):
     maps = [

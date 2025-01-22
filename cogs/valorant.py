@@ -18,32 +18,42 @@ class Valorant(commands.Cog):
     valorant = discord.SlashCommandGroup('valorant', 'Valorant-related utils')
 
     @valorant.command(name='stack', description='any stackas', guild_ids=[GUILD_ID])
-    async def stack(self, ctx):
+    async def stack(
+        self,
+        ctx,
+        size: discord.Option(
+            int,
+            name='size',
+            description='Number of stackas (default 5)',
+            choices=[5, 10],
+            default=5,
+        )
+    ):
         embed = discord.Embed(
             title='Valorant Stack',
             color=discord.Color.from_rgb(78, 42, 132),
         )
-        embed.add_field(name=':white_medium_square::white_medium_square::white_medium_square::white_medium_square::white_medium_square:', value='empty :/')
-        await ctx.respond(embed=embed, view=ValorantStackView(embed))
+        embed.add_field(name=''.join([':white_medium_square:' for _ in range(size)]), value='empty :/')
+        await ctx.respond(embed=embed, view=ValorantStackView(embed, size))
 
     @valorant.command(name='random-lobby', description='Generates a randomized Valorant lobby', guild_ids=[GUILD_ID])
     async def random_lobby(
-            self,
-            ctx,
-            map_flags: discord.Option(
-                str,
-                name='maps',
-                description='Map pool used for randomization (default all)',
-                choices=['active', 'newest', 'all'],
-                default='all',
-            ),
-            team_flags: discord.Option(
-                str,
-                name='teams',
-                description='Agent selection used for randomization (default role-balanced)',
-                choices=['role-balanced', 'random'],
-                default='role-balanced',
-            ),
+        self,
+        ctx,
+        map_flags: discord.Option(
+            str,
+            name='maps',
+            description='Map pool used for randomization (default all)',
+            choices=['active', 'newest', 'all'],
+            default='all',
+        ),
+        team_flags: discord.Option(
+            str,
+            name='teams',
+            description='Agent selection used for randomization (default role-balanced)',
+            choices=['role-balanced', 'random'],
+            default='role-balanced',
+        ),
     ):
         map = random_map(map_flags)
         attackers = random_team(team_flags)
@@ -67,18 +77,19 @@ def setup(bot):
 
 class ValorantStackView(discord.ui.View):
 
-    def __init__(self, embed):
+    def __init__(self, embed, size):
         super().__init__(timeout=1200)
         self.embed = embed
         self.joined = {}
         self.pinged = False
+        self.stack_size = size
 
     def update_embed(self):
-        # Title: add a green square per person joined, yellow square per person over 5, and white square per empty slot
+        # Title: add a green square per person joined, yellow square per person over stack size, and white square per empty slot
         num_joined = len(self.joined)
-        name = ''.join([':green_square:' if i < 5 else ':yellow_square:' for i in range(num_joined)])
-        if num_joined < 5:
-            name += ''.join([':white_medium_square:' for _ in range(5 - num_joined)])
+        name = ''.join([':green_square:' if i < self.stack_size else ':yellow_square:' for i in range(num_joined)])
+        if num_joined < self.stack_size:
+            name += ''.join([':white_medium_square:' for _ in range(self.stack_size - num_joined)])
 
         # Value: display name of every user
         value = '\n'.join(user.mention for user in self.joined.values()) if self.joined else 'empty :/'
@@ -96,9 +107,9 @@ class ValorantStackView(discord.ui.View):
         self.update_embed()
         await interaction.response.edit_message(embed=self.embed)
 
-        if not self.pinged and len(self.joined) >= 5:
+        if not self.pinged and len(self.joined) >= self.stack_size:
             self.pinged = True
-            await interaction.followup.send(''.join(user.mention for user in self.joined.values()))
+            await interaction.followup.send(' '.join(user.mention for user in self.joined.values()))
 
     @discord.ui.button(label='Leave', style=discord.ButtonStyle.red)
     async def leave_callback(self, button, interaction):
@@ -109,9 +120,9 @@ class ValorantStackView(discord.ui.View):
 
     @discord.ui.button(label='Bump!', style=discord.ButtonStyle.grey)
     async def refresh_callback(self, button, interaction):
+        # TODO: fix issue with race condition spamming console and nuking the stack altogether
+        await self.message.delete()
         await interaction.response.send_message(embed=self.embed, view=self)
-        self.disable_all_items()
-        await self.message.edit(view=self)
 
 def random_map(flags):
     maps = [

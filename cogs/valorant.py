@@ -107,7 +107,7 @@ class ValorantStackView(discord.ui.View):
         self.update_embed()
         await interaction.response.edit_message(embed=self.embed)
 
-    @discord.ui.button(label='Refresh', style=discord.ButtonStyle.grey)
+    @discord.ui.button(label='bump', style=discord.ButtonStyle.grey)
     async def refresh_callback(self, button, interaction):
         await interaction.response.send_message(embed=self.embed, view=self)
         self.disable_all_items()

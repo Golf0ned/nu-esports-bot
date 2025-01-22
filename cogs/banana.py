@@ -36,8 +36,8 @@ class CounterUpdate(discord.ui.View):
     def __init__(self, embed):
         super().__init__(timeout=1200)
         self.embed = embed
-
-        counter = 0
+    
+    counter = 0
 
     def update_counter(self):
         counter += 1

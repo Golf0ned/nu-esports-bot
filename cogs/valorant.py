@@ -109,7 +109,7 @@ class ValorantStackView(discord.ui.View):
 
         if not self.pinged and len(self.joined) >= self.stack_size:
             self.pinged = True
-            await interaction.followup.send(''.join(user.mention for user in self.joined.values()))
+            await interaction.followup.send(' '.join(user.mention for user in self.joined.values()))
 
     @discord.ui.button(label='Leave', style=discord.ButtonStyle.red)
     async def leave_callback(self, button, interaction):

@@ -120,8 +120,9 @@ class ValorantStackView(discord.ui.View):
 
     @discord.ui.button(label='Bump!', style=discord.ButtonStyle.grey)
     async def refresh_callback(self, button, interaction):
-        await interaction.response.send_message(embed=self.embed, view=self)
+        # TODO: fix issue with race condition spamming console and nuking the stack altogether
         await self.message.delete()
+        await interaction.response.send_message(embed=self.embed, view=self)
 
 def random_map(flags):
     maps = [

@@ -72,7 +72,7 @@ class ValorantStackView(discord.ui.View):
         self.embed = embed
         self.joined = {}
         self.pinged = False
-    
+
     def update_embed(self):
         # Title: add a green square per person joined, yellow square per person over 5, and white square per empty slot
         num_joined = len(self.joined)
@@ -96,7 +96,7 @@ class ValorantStackView(discord.ui.View):
         self.update_embed()
         await interaction.response.edit_message(embed=self.embed)
 
-        if not self.pinged and len(self.joined) >= 5:
+        if not self.pinged and len(self.joined) >= 1:
             self.pinged = True
             await interaction.followup.send(''.join(user.mention for user in self.joined.values()))
 
@@ -106,6 +106,12 @@ class ValorantStackView(discord.ui.View):
             self.joined.pop(interaction.user.id)
         self.update_embed()
         await interaction.response.edit_message(embed=self.embed)
+
+    @discord.ui.button(label='Refresh', style=discord.ButtonStyle.grey)
+    async def refresh_callback(self, button, interaction):
+        await interaction.response.send_message(embed=self.embed, view=self)
+        self.disable_all_items()
+        await self.message.edit(view=self)
 
 def random_map(flags):
     maps = [

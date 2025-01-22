@@ -18,6 +18,7 @@ async def on_ready():
 cogs_list = [
     'gameroom',
     'valorant',
+    'banana',
 ]
 
 for cog in cogs_list:

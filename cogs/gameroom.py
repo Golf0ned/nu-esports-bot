@@ -30,12 +30,11 @@ class Gameroom(commands.Cog):
             '2:30PM - 11:00PM',
         ]
         
-        # List of days the game room is closed:
+        # List of days the game room is closed
         # (yes, we're adding by hand)
-        # - MLK Jr Day
-        days_closed = [
-            datetime.date(2025, 1, 20)
-        ]
+        days_closed = {
+            datetime.date(2025, 1, 20): 'MLK Day',
+        }
 
         today = datetime.date.today()
         start = today - datetime.timedelta(days=today.weekday())
@@ -50,7 +49,7 @@ class Gameroom(commands.Cog):
         embed.add_field(name=f'Week of {start.strftime("%-m/%-d")} - {end.strftime("%-m/%-d")}', value='')
 
         for i, day in enumerate(week):
-            value = default_hours[i] if day not in days_closed else 'Closed'
+            value = default_hours[i] if day not in days_closed else f'Closed ({days_closed[day]})'
             embed.add_field(name=day.strftime('%A'), value=value, inline=False)
 
         embed.set_image(url='https://www.northwestern.edu/norris/arts-recreation/game-room/nexus_general_awareness-01.png')

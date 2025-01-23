@@ -56,6 +56,29 @@ class Gameroom(commands.Cog):
 
         await ctx.respond('', embed=embed)
 
+    @gameroom.command(name='games', description='Lists games available on game room consoles', guild_ids=[GUILD_ID])
+    async def games(self, ctx):
+        ps4 = ['Call of Duty: Black Ops 4', 'FIFA 23', 'NBA 2K22', 'Street Fighter V', 'Guilty Gear Strive', 'Guilty Gear Xrd Rev 2', 'The King of Fighters XV', 'Tekken 7', 'Madden NFL 23', 'Madden NFL 24', 'Under Night In-Birth']
+        ps5 = ['NBA 2K25', 'NBA 2K22', 'Madden NFL 25', 'FC25', 'Garfield Lasagna Party', 'Hogwarts Legacy']
+        n64 = ['F-Zero X', 'Goldeneye 007', 'Mario Kart 64', 'Pokemon Stadium', 'Super Smash Bros.']
+        switch = ['Super Smash Bros. Ultimate', 'Mario Party Superstars', 'New Super Mario Bros Deluxe', 'Nintendo Switch Sports', 'Mario Kart 8 Deluxe', 'Snipperclips Plus', 'Mario Strikers: Battle League']
+        wii_u = ['Splatoon', 'Super Smash Bros. Brawl', 'Super Smash Bros. Wii U', 'Mario Kart Wii', 'Lego Marvel Super Heroes']
+        xbox = ['Battlefield 1', 'Mortal Kombat X', 'Halo 5', 'Madden 23', 'Call of Duty: Black Ops 3', 'Call of Duty: Modern Warfare II']
+
+        embed = discord.Embed(
+            title='Game Room Games',
+            color=discord.Color.from_rgb(78, 42, 132),
+        )
+
+        embed.add_field(name='PS4', value='\n'.join(ps4), inline=True)
+        embed.add_field(name='PS5', value='\n'.join(ps5), inline=True)
+        embed.add_field(name='Nintendo 64', value='\n'.join(n64), inline=True)
+        embed.add_field(name='Nintendo Switch', value='\n'.join(switch), inline=True)
+        embed.add_field(name='Wii U', value='\n'.join(wii_u), inline=True)
+        embed.add_field(name='Xbox One', value='\n'.join(xbox), inline=True)
+
+        await ctx.respond('', embed=embed)
+
 
 def setup(bot):
     bot.add_cog(Gameroom(bot))

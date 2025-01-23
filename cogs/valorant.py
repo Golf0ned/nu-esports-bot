@@ -124,6 +124,7 @@ class ValorantStackView(discord.ui.View):
         await self.message.delete()
         await interaction.response.send_message(embed=self.embed, view=self)
 
+
 def random_map(flags):
     maps = [
         'Bind',

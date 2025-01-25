@@ -8,7 +8,7 @@ dotenv.load_dotenv()
 TOKEN = os.getenv('TOKEN')
 GUILD_ID = os.getenv('GUILD_ID')
 
-bot = discord.Bot()
+bot = discord.Bot(intents=discord.Intents.all())
 
 @bot.event
 async def on_ready():

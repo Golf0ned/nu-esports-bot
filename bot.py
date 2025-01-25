@@ -20,6 +20,7 @@ cogs_list = [
     'gameroom',
     'teams',
     'valorant',
+    'banana',
 ]
 
 for cog in cogs_list:

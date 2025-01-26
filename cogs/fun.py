@@ -20,17 +20,9 @@ class Fun(commands.Cog):
             return
 
         if self.bot.user.mentioned_in(message):
-            # You can't test this locally, since the emoji IDs are hard-coded unfortunately.
-            # You can, however, replace them temporarily to verify correctness!
-            chess_reacts = [
-                '<:blunder:1332816325952798853>',
-                '<:mistake:1332816343078273037>',
-                '<:inaccuracy:1332816354306424922>',
-                '<:excellent:1332816405481127998>',
-                '<:best:1332816418881671278>',
-                '<:brilliant:1332816435122274324>',
-            ]
-            await message.add_reaction(random.choice(chess_reacts))
+            chess_emojis = Config.config['fun']['chess_emojis']
+            emoji, id = random.choice(list(chess_emojis.items()))
+            await message.add_reaction(f'<:{emoji}:{id}>')
 
 
 def setup(bot):

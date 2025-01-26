@@ -1,8 +1,10 @@
-# compiled
+# Compiled files
 __pycache__/
 
-# virtual environment
+# Virtual Environment
 venv/
 
-# .env
+# Config (.env phased out)
 .env
+config.yaml
+secrets.yaml

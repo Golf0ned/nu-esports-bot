@@ -7,7 +7,6 @@ from config import Config
 
 
 GUILD_ID = Config.secrets['discord']['guild_id']
-print(GUILD_ID)
 
 
 class Gameroom(commands.Cog):

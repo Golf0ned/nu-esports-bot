@@ -1,19 +1,15 @@
-import os
-
 import discord
-import dotenv
+
+from config import Config
 
 
-dotenv.load_dotenv()
-TOKEN = os.getenv('TOKEN')
-GUILD_ID = os.getenv('GUILD_ID')
+TOKEN = Config.secrets['discord']['token']
 
 bot = discord.Bot(intents=discord.Intents.all())
 
 @bot.event
 async def on_ready():
     print(f'Logged in as {bot.user} (ID: {bot.user.id})')
-
 
 cogs_list = [
     'fun',

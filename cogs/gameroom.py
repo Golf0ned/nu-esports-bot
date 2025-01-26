@@ -1,13 +1,13 @@
 import datetime
-import os
 
 import discord
 from discord.ext import commands
-import dotenv
+
+from config import Config
 
 
-dotenv.load_dotenv()
-GUILD_ID = os.getenv('GUILD_ID')
+GUILD_ID = Config.secrets['discord']['guild_id']
+print(GUILD_ID)
 
 
 class Gameroom(commands.Cog):

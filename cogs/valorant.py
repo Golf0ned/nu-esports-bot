@@ -1,3 +1,4 @@
+import copy
 import random
 
 import discord
@@ -84,7 +85,10 @@ class ValorantStackView(discord.ui.View):
         self.stack_size = size
 
     def update_embed(self):
-        # Title: add a green square per person joined, yellow square per person over stack size, and white square per empty slot
+        # Title:
+        # - Green square: Person joined under limit
+        # - Yellow square: Person joined over stack size
+        # - White square: Empty slot
         num_joined = len(self.joined)
         name = ''.join([':green_square:' if i < self.stack_size else ':yellow_square:' for i in range(num_joined)])
         if num_joined < self.stack_size:
@@ -125,21 +129,8 @@ class ValorantStackView(discord.ui.View):
 
 
 def random_map(flags):
-    maps = [
-        'Bind',
-        'Haven',
-        'Split',
-        'Ascent',
-        'Icebox',
-        'Breeze',
-        'Fracture',
-        'Pearl',
-        'Lotus',
-        'Sunset',
-        'Abyss',
-    ]
-
-    maps_active = [0, 1, 2, 6, 7, 8, 10]
+    maps = Config.config['valorant']['maps']
+    maps_active = Config.config['valorant']['maps_active']
 
     match flags:
         case 'active':
@@ -150,27 +141,21 @@ def random_map(flags):
             return random.choice(maps)
 
 def random_team(flags):
-    # Note that Viper's grouped with the sentinels.
-    # From an agent pick perspective, it leads to better random teams.
-    # (we do not endorse solo viper!)
-    controllers = ['Brimstone', 'Omen', 'Astra', 'Harbor', 'Clove']
-    duelists = ['Phoenix', 'Jett', 'Raze', 'Reyna', 'Yoru', 'Neon', 'Iso']
-    initiators = ['Sova', 'Breach', 'Skye', 'KAY/O', 'Fade', 'Gekko', 'Tejo']
-    sentinels = ['Viper', 'Cypher', 'Sage', 'Killjoy', 'Chamber', 'Deadlock', 'Vyse']
+    agents = Config.config['valorant']['agents']
+    agents_roles = copy.deepcopy(Config.config['valorant']['agents_roles']) # copy because pop
 
     match flags:
         case 'role-balanced':
-            team = [
-                controllers.pop(random.randrange(len(controllers))),
-                duelists.pop(random.randrange(len(duelists))),
-                initiators.pop(random.randrange(len(initiators))),
-                sentinels.pop(random.randrange(len(sentinels))),
-            ]
-            all = controllers + duelists + initiators + sentinels
-            team.append(random.choice(all))
+            # pop random agent from each role
+            team = [agents[role.pop(random.randrange(len(role)))] for role in agents_roles.values()]
+
+            # fill in remaining agent
+            remaining_agents = [i for role in agents_roles.values() for i in role]
+            team.append(agents[random.choice(remaining_agents)])
+
+            # shuffle and return
             random.shuffle(team)
             return team
         case _:
-            all = controllers + duelists + initiators + sentinels
-            return random.sample(all, 5)
+            return random.sample(agents, 5)
 

@@ -21,6 +21,12 @@ class Valorant(commands.Cog):
     async def stack(
         self,
         ctx,
+        name: discord.Option(
+            str,
+            name='name',
+            description='Name of the stack',
+            default='',
+        ),
         size: discord.Option(
             int,
             name='size',
@@ -29,8 +35,11 @@ class Valorant(commands.Cog):
             default=5,
         )
     ):
+        if name == '':
+            name = f'{ctx.author.display_name}\'s stack'
+
         embed = discord.Embed(
-            title='Valorant Stack',
+            title=name,
             color=discord.Color.from_rgb(78, 42, 132),
         )
         embed.add_field(name=''.join([':white_medium_square:' for _ in range(size)]), value='empty :/')

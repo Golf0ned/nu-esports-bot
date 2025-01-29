@@ -31,10 +31,16 @@ class Valorant(commands.Cog):
             int,
             name='size',
             description='Number of stackas (default 5)',
-            choices=[5, 10],
             default=5,
         )
     ):
+        # We don't need 1 or less people in a stack
+        if size < 2:
+            size = 2
+        # We don't need more than 10 people in a stack. If we do, jump me
+        if size > 10:
+            size = 10
+
         if name == '':
             name = f'{ctx.author.display_name}\'s stack'
         name += f' [{size}]'

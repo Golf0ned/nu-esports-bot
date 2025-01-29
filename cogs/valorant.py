@@ -37,6 +37,7 @@ class Valorant(commands.Cog):
     ):
         if name == '':
             name = f'{ctx.author.display_name}\'s stack'
+        name += f' [{size}]'
 
         embed = discord.Embed(
             title=name,

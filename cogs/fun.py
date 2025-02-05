@@ -6,7 +6,7 @@ from discord.ext import commands
 from config import Config
 
 
-GUILD_ID = Config.secrets['discord']['guild_id']
+GUILD_ID = Config.secrets["discord"]["guild_id"]
 
 
 class Fun(commands.Cog):
@@ -21,12 +21,12 @@ class Fun(commands.Cog):
 
         # React with random chess emoji on ping
         if self.bot.user.mentioned_in(message):
-            chess_emojis = Config.config['fun']['chess_emojis']
+            chess_emojis = Config.config["fun"]["chess_emojis"]
             emoji, id = random.choice(list(chess_emojis.items()))
-            await message.add_reaction(f'<:{emoji}:{id}>')
+            await message.add_reaction(f"<:{emoji}:{id}>")
 
         # User-specific reactions
-        special_users = Config.config['fun']['special_users']
+        special_users = Config.config["fun"]["special_users"]
         if random.randint(1, 100) <= 15 and message.author.id in special_users:
             emoji = special_users[message.author.id]
             await message.add_reaction(emoji)

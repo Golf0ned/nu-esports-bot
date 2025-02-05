@@ -11,104 +11,104 @@ fun:
     #<user_id>: '<emoji>'
 gameroom:
   default_hours: # MTWTFSS
-    - '2:30PM - 11:00PM'
-    - '2:30PM - 11:00PM'
-    - '2:30PM - 11:00PM'
-    - '2:30PM - 11:00PM'
-    - '12:30PM - 11:00PM'
-    - '12:30PM - 11:00PM'
-    - '2:30PM - 11:00PM'
+    - "2:30PM - 11:00PM"
+    - "2:30PM - 11:00PM"
+    - "2:30PM - 11:00PM"
+    - "2:30PM - 11:00PM"
+    - "12:30PM - 11:00PM"
+    - "12:30PM - 11:00PM"
+    - "2:30PM - 11:00PM"
   adjusted_hours:
-    2025-01-20: 'Closed (MLK Day)'
+    2025-01-20: "Closed (MLK Day)"
   games:
     ps4:
-      - 'Call of Duty: Black Ops 4'
-      - 'FIFA 23'
-      - 'NBA 2K22'
-      - 'Street Fighter V'
-      - 'Guilty Gear Strive'
-      - 'Guilty Gear Xrd Rev 2'
-      - 'The King of Fighters XV'
-      - 'Tekken 7'
-      - 'Madden NFL 23'
-      - 'Madden NFL 24'
-      - 'Under Night In-Birth'
+      - "Call of Duty: Black Ops 4"
+      - "FIFA 23"
+      - "NBA 2K22"
+      - "Street Fighter V"
+      - "Guilty Gear Strive"
+      - "Guilty Gear Xrd Rev 2"
+      - "The King of Fighters XV"
+      - "Tekken 7"
+      - "Madden NFL 23"
+      - "Madden NFL 24"
+      - "Under Night In-Birth"
     ps5:
-      - 'NBA 2K25'
-      - 'NBA 2K22'
-      - 'Madden NFL 25'
-      - 'FC25'
-      - 'Garfield Lasagna Party'
-      - 'Hogwarts Legacy'
+      - "NBA 2K25"
+      - "NBA 2K22"
+      - "Madden NFL 25"
+      - "FC25"
+      - "Garfield Lasagna Party"
+      - "Hogwarts Legacy"
     n64:
-      - 'F-Zero X'
-      - 'Goldeneye 007'
-      - 'Mario Kart 64'
-      - 'Pokemon Stadium'
-      - 'Super Smash Bros.'
+      - "F-Zero X"
+      - "Goldeneye 007"
+      - "Mario Kart 64"
+      - "Pokemon Stadium"
+      - "Super Smash Bros."
     switch:
-      - 'Super Smash Bros. Ultimate'
-      - 'Mario Party Superstars'
-      - 'New Super Mario Bros Deluxe'
-      - 'Nintendo Switch Sports'
-      - 'Mario Kart 8 Deluxe'
-      - 'Snipperclips Plus'
-      - 'Mario Strikers: Battle League'
+      - "Super Smash Bros. Ultimate"
+      - "Mario Party Superstars"
+      - "New Super Mario Bros Deluxe"
+      - "Nintendo Switch Sports"
+      - "Mario Kart 8 Deluxe"
+      - "Snipperclips Plus"
+      - "Mario Strikers: Battle League"
     wii_u:
-      - 'Splatoon'
-      - 'Super Smash Bros. Brawl'
-      - 'Super Smash Bros. Wii U'
-      - 'Mario Kart Wii'
-      - 'Lego Marvel Super Heroes'
+      - "Splatoon"
+      - "Super Smash Bros. Brawl"
+      - "Super Smash Bros. Wii U"
+      - "Mario Kart Wii"
+      - "Lego Marvel Super Heroes"
     xbox:
-      - 'Battlefield 1'
-      - 'Mortal Kombat X'
-      - 'Halo 5'
-      - 'Madden 23'
-      - 'Call of Duty: Black Ops 3'
-      - 'Call of Duty: Modern Warfare II'
+      - "Battlefield 1"
+      - "Mortal Kombat X"
+      - "Halo 5"
+      - "Madden 23"
+      - "Call of Duty: Black Ops 3"
+      - "Call of Duty: Modern Warfare II"
 teams:
 valorant:
   maps: # Release order
-    - 'Bind'
-    - 'Haven'
-    - 'Split'
-    - 'Ascent'
-    - 'Icebox'
-    - 'Breeze'
-    - 'Fracture'
-    - 'Pearl'
-    - 'Lotus'
-    - 'Sunset'
-    - 'Abyss'
+    - "Bind"
+    - "Haven"
+    - "Split"
+    - "Ascent"
+    - "Icebox"
+    - "Breeze"
+    - "Fracture"
+    - "Pearl"
+    - "Lotus"
+    - "Sunset"
+    - "Abyss"
   maps_active: [0, 1, 2, 6, 7, 8, 10]
   agents: # Release order
-    - 'Brimstone'
-    - 'Viper'
-    - 'Omen'
-    - 'Cypher'
-    - 'Sova'
-    - 'Sage'
-    - 'Phoenix'
-    - 'Jett'
-    - 'Raze'
-    - 'Breach'
-    - 'Reyna'
-    - 'Killjoy'
-    - 'Skye'
-    - 'Yoru'
-    - 'Astra'
-    - 'KAY/O'
-    - 'Chamber'
-    - 'Neon'
-    - 'Fade'
-    - 'Harbor'
-    - 'Gekko'
-    - 'Deadlock'
-    - 'Iso'
-    - 'Clove'
-    - 'Vyse'
-    - 'Tejo'
+    - "Brimstone"
+    - "Viper"
+    - "Omen"
+    - "Cypher"
+    - "Sova"
+    - "Sage"
+    - "Phoenix"
+    - "Jett"
+    - "Raze"
+    - "Breach"
+    - "Reyna"
+    - "Killjoy"
+    - "Skye"
+    - "Yoru"
+    - "Astra"
+    - "KAY/O"
+    - "Chamber"
+    - "Neon"
+    - "Fade"
+    - "Harbor"
+    - "Gekko"
+    - "Deadlock"
+    - "Iso"
+    - "Clove"
+    - "Vyse"
+    - "Tejo"
   agents_roles:
     controller: [0, 2, 14, 19, 23]
     duelist: [6, 7, 8, 10, 13, 17, 22]

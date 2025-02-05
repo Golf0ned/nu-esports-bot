@@ -156,6 +156,7 @@ def random_map(flags):
         case _:
             return random.choice(maps)
 
+
 def random_team(flags):
     agents = Config.config['valorant']['agents']
     agents_roles = copy.deepcopy(Config.config['valorant']['agents_roles']) # copy because pop
@@ -172,6 +173,7 @@ def random_team(flags):
             # shuffle and return
             random.shuffle(team)
             return team
+
         case _:
             return random.sample(agents, 5)
 

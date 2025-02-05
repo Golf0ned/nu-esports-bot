@@ -1,7 +1,9 @@
 import yaml
 
+
 config_file = 'config.yaml'
 secrets_file = 'secrets.yaml'
+
 
 class Config:
 

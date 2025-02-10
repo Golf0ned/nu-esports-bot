@@ -28,7 +28,7 @@ class Fun(commands.Cog):
         # User-specific reactions
         special_users = Config.config["fun"]["special_users"]
         if random.randint(1, 100) <= 15 and message.author.id in special_users:
-            emoji = special_users[message.author.id]
+            emoji = random.choice(special_users[message.author.id])
             await message.add_reaction(emoji)
 
 

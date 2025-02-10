@@ -8,7 +8,8 @@ fun:
     best: #<emoji_id>
     brilliant: #<emoji_id>
   special_users:
-    #<user_id>: '<emoji>'
+    #<user_id>: 
+      #- '<emoji>'
 gameroom:
   default_hours: # MTWTFSS
     - "2:30PM - 11:00PM"

@@ -34,8 +34,15 @@ class Fun(commands.Cog):
         # User-specific reactions
         special_users = Config.config["fun"]["special_users"]
         if random.randint(1, 100) <= 15 and message.author.id in special_users:
-            emoji = random.choice(special_users[message.author.id])
-            await message.add_reaction(emoji)
+            emoji_set = random.choice(special_users[message.author.id])
+            if isinstance(emoji_set, list):
+                # List of reactions
+                for emoji in emoji_set:
+                    await message.add_reaction(emoji)
+            else:
+                # Single reaction
+                await message.add_reaction(emoji_set)
+
 
 
 def setup(bot):

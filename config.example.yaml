@@ -7,9 +7,10 @@ fun:
     excellent: #<emoji_id>
     best: #<emoji_id>
     brilliant: #<emoji_id>
-  special_users:
+  special_users: # for each user_id, a list of (emoji or list of emoji)
     #<user_id>: 
-      #- '<emoji>'
+      #- "<emoji>"
+      #- ["<emoji>", "<emoji>"]
 gameroom:
   default_hours: # MTWTFSS
     - "2:30PM - 11:00PM"

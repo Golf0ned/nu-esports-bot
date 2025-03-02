@@ -21,6 +21,8 @@ class Fun(commands.Cog):
 
         # React with random chess emoji on ping
         if self.bot.user.mentioned_in(message):
+            if message.mention_everyone:
+                return
             chess_emojis = Config.config["fun"]["chess_emojis"]
             emoji, id = random.choice(list(chess_emojis.items()))
             await message.add_reaction(f"<:{emoji}:{id}>")

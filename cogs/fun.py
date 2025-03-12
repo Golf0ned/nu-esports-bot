@@ -27,6 +27,10 @@ class Fun(commands.Cog):
             emoji, id = random.choice(list(chess_emojis.items()))
             await message.add_reaction(f"<:{emoji}:{id}>")
 
+        # Affirm the glory of osu!
+        if "i love osu" in message.content:
+            await message.reply("Osu 😻")
+
         # User-specific reactions
         special_users = Config.config["fun"]["special_users"]
         if random.randint(1, 100) <= 15 and message.author.id in special_users:

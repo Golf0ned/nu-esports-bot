@@ -28,7 +28,7 @@ class Fun(commands.Cog):
             await message.add_reaction(f"<:{emoji}:{id}>")
 
         # Affirm the glory of osu!
-        if "i love osu" in message.content:
+        if "i love osu" in message.content.lower():
             await message.reply("Osu 😻")
 
         # User-specific reactions

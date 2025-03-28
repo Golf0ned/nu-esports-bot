@@ -11,7 +11,7 @@ class Points(commands.Cog):
 
     def __init__(self, bot):
         self.bot = bot
-        self.messaged = {}
+        self.points_buffer = {}
         self.update_points.start()
 
     @commands.Cog.listener()
@@ -20,11 +20,11 @@ class Points(commands.Cog):
         if user == self.bot.user or user.bot:
             return
 
-        self.messaged[user.id] = self.messaged.get(user.id, 0) + 1
+        self.points_buffer[user.id] = self.points_buffer.get(user.id, 0) + 1
 
     @tasks.loop(seconds=60)
     async def update_points(self):
-        if not self.messaged:
+        if not self.points_buffer:
             return
 
         sql = """INSERT INTO users (discordid, points)
@@ -32,11 +32,11 @@ class Points(commands.Cog):
             ON CONFLICT (discordid)
             DO UPDATE SET points = users.points + EXCLUDED.points;
         """
-        data = [(user_id, message_count) for user_id, message_count in self.messaged.items()]
+        data = [(user_id, message_count) for user_id, message_count in self.points_buffer.items()]
         async with db.cursor() as cur:
             await cur.executemany(sql, data)
 
-        self.messaged.clear()
+        self.points_buffer.clear()
 
 
 def setup(bot):

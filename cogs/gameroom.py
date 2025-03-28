@@ -3,7 +3,7 @@ import datetime
 import discord
 from discord.ext import commands
 
-from config import Config
+from utils.config import Config
 
 
 GUILD_ID = Config.secrets["discord"]["guild_id"]

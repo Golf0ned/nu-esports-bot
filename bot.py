@@ -1,6 +1,6 @@
 import discord
 
-from config import Config
+from utils.config import Config
 
 
 TOKEN = Config.secrets["discord"]["token"]

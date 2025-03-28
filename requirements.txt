@@ -9,6 +9,7 @@ multidict==6.1.0
 propcache==0.2.1
 psycopg==3.2.6
 psycopg-binary==3.2.6
+psycopg-pool==3.2.6
 py-cord==2.6.1
 PyYAML==6.0.2
 typing_extensions==4.12.2

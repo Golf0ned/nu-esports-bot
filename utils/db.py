@@ -1,5 +1,7 @@
+from contextlib import asynccontextmanager
+
 import psycopg
-import psycopg.pool
+import psycopg_pool
 
 from utils import config
 
@@ -7,24 +9,21 @@ from utils import config
 DB_INFO = config.secrets["database"]
 
 
-__host = DB_INFO["host"]
-__port = DB_INFO["port"]
-__dbname = DB_INFO["dbname"]
-__user = DB_INFO["user"]
-__password = DB_INFO["password"]
+__conninfo = " ".join([f"{key}={DB_INFO[key]}" for key in ["host", "port", "dbname", "user", "password"]])
+pool = psycopg_pool.AsyncConnectionPool(conninfo=__conninfo, open=False)
 
-__conninfo = f"host={__host} port={__port} dbname={__dbname} user={__user} password={__password}"
-dbpool = psycopg.pool.AsyncConnectionPool(conninfo=__conninfo)
+async def open_pool():
+    await pool.open()
 
-@contextmanager
+@asynccontextmanager
 async def cursor():
-    with await dbpool.connection() as conn:
-        with conn.cursor() as cur:
-            try:
+    async with pool.connection() as conn:
+        try:
+            async with conn.cursor() as cur:
                 yield cur
                 await conn.commit()
-            except Exception as e:
-                await conn.rollback()
-                raise e
-            finally:
-                await conn.close()
+        except Exception as e:
+            await conn.rollback()
+            raise e
+        finally:
+            await conn.close()

@@ -4,10 +4,10 @@ import random
 import discord
 from discord.ext import commands
 
-from utils.config import Config
+from utils import config
 
 
-GUILD_ID = Config.secrets["discord"]["guild_id"]
+GUILD_ID = config.secrets["discord"]["guild_id"]
 
 
 class Valorant(commands.Cog):

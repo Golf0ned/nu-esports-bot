@@ -1,9 +1,9 @@
 import discord
 
-from utils.config import Config
+from utils import config
 
 
-TOKEN = Config.secrets["discord"]["token"]
+TOKEN = config.secrets["discord"]["token"]
 
 bot = discord.Bot(intents=discord.Intents.all())
 

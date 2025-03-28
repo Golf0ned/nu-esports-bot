@@ -1,0 +1,9 @@
+DROP TABLE IF EXISTS users;
+
+CREATE TABLE users
+(
+    userid SERIAL PRIMARY KEY,
+    discordid BIGINT NOT NULL UNIQUE,
+    points BIGINT DEFAULT 0
+);
+

@@ -7,7 +7,7 @@ from utils import config
 
 
 GUILD_ID = config.secrets["discord"]["guild_id"]
-SPECIAL_USERS = config.config["discord"]["special_users"]
+SPECIAL_USERS = config.config["fun"]["special_users"]
 
 
 class Fun(commands.Cog):

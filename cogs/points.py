@@ -1,3 +1,5 @@
+import random
+
 import discord
 from discord.ext import commands, tasks
 
@@ -14,13 +16,34 @@ class Points(commands.Cog):
         self.points_buffer = {}
         self.update_points.start()
 
+    points = discord.SlashCommandGroup("points", "points :)")
+
     @commands.Cog.listener()
     async def on_message(self, message):
         user = message.author
         if user == self.bot.user or user.bot:
             return
 
-        self.points_buffer[user.id] = self.points_buffer.get(user.id, 0) + 1
+        self.points_buffer[user.id] = random.randint(7, 25)
+
+    @points.command(name="balance", description="Get your points balance or another user's point balance", guild_ids=[GUILD_ID])
+    async def balance(self, ctx, user: discord.Option(discord.User, default=None)):
+        if user is None:
+            user = ctx.author
+
+        sql = "SELECT points FROM users WHERE discordid = %s"
+        data = [user.id]
+        async with db.cursor() as cur:
+            await cur.execute(sql, data)
+            result = await cur.fetchone()
+
+        points = result[0] if result else 0
+        embed = discord.Embed(
+            title=f"{user.display_name}'s points",
+            description=f"{points} points",
+            color=discord.Color.from_rgb(78, 42, 132),
+        )
+        await ctx.respond(embed=embed)
 
     @tasks.loop(seconds=60)
     async def update_points(self):

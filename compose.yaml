@@ -16,7 +16,7 @@ services:
       POSTGRES_PASSWORD: supersecurepassword
       POSTGRES_DB: nu-esports-bot
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U bot -d nu-esports-dev"]
+      test: ["CMD-SHELL", "pg_isready -U bot -d nu-esports-bot"]
       start_period: 10s
       interval: 10s
       timeout: 5s

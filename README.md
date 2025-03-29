@@ -30,7 +30,13 @@ Also affectionately referred to as Miku.
 
 ## About
 
-TODO
+Provides utilities for the Northwestern Esports Discord server, such as:
+
+- Schedule and games list for Northwestern's game room
+- Lobby creation tools for games like VALORANT
+- Points for chatting that can be wagered and spent on various things
+
+Built with Python and Postgres. Runs on Docker and Docker Compose.
 
 ## Getting Started
 
@@ -49,7 +55,7 @@ There's a couple of additional things you need to do here to configure the bot:
 
 The bot uses the files `config.yaml` and `secrets.yaml` to store configuration.
 
-Copy the `config.yaml.example` and `secrets.yaml.example` files to `config.yaml` and `secrets.yaml`, respectively.
+After cloning the repository, copy the `config.yaml.example` and `secrets.yaml.example` files to `config.yaml` and `secrets.yaml`, respectively.
 
 > [!CAUTION]
 > The `config.yaml` and `secrets.yaml` files should stay gitignored. Pushing them to the repository can leak sensitive info such as discord ids, tokens, and passwords.
@@ -73,18 +79,24 @@ docker-compose up
 
 Running the bot locally requires a few additional steps.
 
-Make sure you have [Python 3.10+](https://www.python.org/downloads/) installed. From here, make and activate a virtual environment with your favorite tool ([venv](https://docs.python.org/3/library/venv.html), [conda](https://anaconda.org/anaconda/conda), etc.) and install the requirements:
+Make sure you have [Python 3.10+](https://www.python.org/downloads/) installed.
+
+From here, make and activate a virtual environment with your favorite tool ([venv](https://docs.python.org/3/library/venv.html), [conda](https://anaconda.org/anaconda/conda), etc.).
+
+Then, install the required packages with:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-You will also need a Postgres database to connect to. There are multiple ways to set this up:
+Additionally, you will also need a Postgres database to connect to. There are multiple ways to set this up:
 
 - Install and run [locally](https://www.postgresql.org/download/)
 - Use [Docker](https://hub.docker.com/_/postgres)
 - Use a cloud provider of your choice ([AWS](https://aws.amazon.com/rds/postgresql/), [DigitalOcean](https://www.digitalocean.com/products/managed-databases-postgresql), [Railway](https://docs.railway.com/guides/postgresql), etc.)
 
+After you have Postgres up and running, modify `secrets.yaml` (and/or `compose.yaml`) to point to it -- the defaults are set up for Docker Compose.
+
 ## Contributing
 
-TODO
+Check out [CONTRIBUTING.md](CONTRIBUTING.md) for more information on how to contribute to the bot. 

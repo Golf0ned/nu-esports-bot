@@ -1,0 +1,32 @@
+services:
+  bot:
+    build: .
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - internal
+
+  db:
+    image: postgres:latest
+    restart: always
+    environment:
+      POSTGRES_USER: bot
+      POSTGRES_PASSWORD: 123456
+      POSTGRES_DB: nu-esports-dev
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bot -d nu-esports-dev"]
+      start_period: 10s
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    expose:
+      - 5432
+    networks:
+      - internal
+    volumes:
+      - ./postgres/init-tables.sql:/docker-entrypoint-initdb.d/init-tables.sql
+
+networks:
+  internal:

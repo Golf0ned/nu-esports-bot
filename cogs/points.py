@@ -118,24 +118,29 @@ class PredictionView(discord.ui.View):
         super().__init__(timeout=1200)
 
         self.option_a = option_a
-        self.option_b = option_b
         self.option_a_points = {}
+        self.option_b = option_b
         self.option_b_points = {}
 
         self.message = None
         self.embed = embed
 
-        option_a_button = discord.ui.Button(label=option_a)
-        async def option_a_callback(interaction):
-            await interaction.response.send_modal(PredictionModal(option_a, self.option_a_modal_callback))
-        option_a_button.callback = option_a_callback
-        self.add_item(option_a_button)
+        def create_button(label):
+            async def button_callback(interaction):
+                if any([
+                    label == self.option_a and interaction.user.id in self.option_b_points,
+                    label == self.option_b and interaction.user.id in self.option_a_points,
+                ]):
+                    await interaction.response.send_message(f"{interaction.user.mention} tried to change sides...")
+                    return
+                await interaction.response.send_modal(PredictionModal(self.modal_callback, label))
 
-        option_b_button = discord.ui.Button(label=option_b)
-        async def option_b_callback(interaction):
-            await interaction.response.send_modal(PredictionModal(option_b, self.option_b_modal_callback))
-        option_b_button.callback = option_b_callback
-        self.add_item(option_b_button)
+            button = discord.ui.Button(label=label)
+            button.callback = button_callback
+            return button
+
+        self.add_item(create_button(self.option_a))
+        self.add_item(create_button(self.option_b))
 
     def update_embed(self):
         # TODO: add odds
@@ -161,41 +166,34 @@ class PredictionView(discord.ui.View):
         self.disable_all_items()
         await self.message.edit(view=self)
 
-    async def option_a_modal_callback(self, user, points):
-        prev_a = self.option_a_points.pop(user.id, None)
-        prev_b = self.option_b_points.pop(user.id, None)
-        self.option_a_points[user.id] = points
+    async def modal_callback(self, user, points, option):
+        if option == self.option_a:
+            prev = self.option_a_points.pop(user.id, 0)
+            self.option_a_points[user.id] = prev + points
+        else:
+            prev = self.option_b_points.pop(user.id, 0)
+            self.option_b_points[user.id] = prev + points
+
         await self.message.edit(embed=self.update_embed())
 
         format = "{} bet {} points on **{}**"
-        format_prev = "\n(previously: {} on **{}**)"
-        message = format.format(user.mention, points, self.option_a)
-        if prev_a is not None:
-            message += format_prev.format(prev_a, self.option_a)
-        elif prev_b is not None:
-            message += format_prev.format(prev_b, self.option_b)
+        format_prev = "\n(up from {})"
+        message = format.format(user.mention, prev + points, option)
+        if prev > 0:
+            message += format_prev.format(prev)
+
+        sql = "UPDATE users SET points = points - %s WHERE discordid = %s"
+        data = [points, user.id]
+        await db.perform_one(sql, data)
+
         await self.message.reply(message)
 
-    async def option_b_modal_callback(self, user, points):
-        prev_a = self.option_a_points.pop(user.id, None)
-        prev_b = self.option_b_points.pop(user.id, None)
-        self.option_b_points[user.id] = points
-        await self.message.edit(embed=self.update_embed())
-
-        format = "{} bet {} points on **{}**"
-        format_prev = "\n(previously: {} on **{}**)"
-        message = format.format(user.mention, points, self.option_b)
-        if prev_a is not None:
-            message += format_prev.format(prev_a, self.option_a)
-        elif prev_b is not None:
-            message += format_prev.format(prev_b, self.option_b)
-        await self.message.reply(message)
 
 class PredictionModal(discord.ui.Modal):
-    def __init__(self, side, callback):
+    def __init__(self, callback, option):
         super().__init__(title="Prediction")
-        self.side = side
         self.view_callback = callback
+        self.option = option
 
         self.add_item(discord.ui.InputText(
             label="How many points do you want to wager?",
@@ -215,7 +213,13 @@ class PredictionModal(discord.ui.Modal):
             await interaction.response.send_message("You must wager more than 0 points!", ephemeral=True)
             return
 
-        # TODO: check if enough points
+        sql = "SELECT points FROM users WHERE discordid = %s"
+        data = [interaction.user.id]
+        result = await db.fetch_one(sql, data)
+
+        if result is None or result[0] < points:
+            await interaction.response.send_message("You don't have enough points!", ephemeral=True)
+            return
 
         await interaction.response.defer()
-        await self.view_callback(interaction.user, points)
+        await self.view_callback(interaction.user, points, self.option)

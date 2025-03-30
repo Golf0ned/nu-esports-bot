@@ -50,6 +50,9 @@ class Points(commands.Cog):
         if ctx.user.id in self.predictions:
             await ctx.respond("You already have a prediction open.")
             return
+        if option_a == option_b:
+            await ctx.respond("Options must be different.")
+            return
 
         message = await ctx.send(f"PREDICTION: **{title}**")
         thread = await message.create_thread(name=f"{title}")

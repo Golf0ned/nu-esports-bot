@@ -145,8 +145,8 @@ class ValorantStackView(discord.ui.View):
 
 
 def random_map(flags):
-    maps = Config.config["valorant"]["maps"]
-    maps_active = Config.config["valorant"]["maps_active"]
+    maps = config.config["valorant"]["maps"]
+    maps_active = config.config["valorant"]["maps_active"]
 
     match flags:
         case "active":
@@ -158,8 +158,8 @@ def random_map(flags):
 
 
 def random_team(flags):
-    agents = Config.config["valorant"]["agents"]
-    agents_roles = copy.deepcopy(Config.config["valorant"]["agents_roles"]) # copy because pop
+    agents = config.config["valorant"]["agents"]
+    agents_roles = copy.deepcopy(config.config["valorant"]["agents_roles"]) # copy because pop
 
     match flags:
         case "role-balanced":

@@ -7,7 +7,6 @@ from utils import config
 
 
 GUILD_ID = config.secrets["discord"]["guild_id"]
-SPECIAL_USERS = config.config["fun"]["special_users"]
 
 
 class Fun(commands.Cog):
@@ -24,7 +23,7 @@ class Fun(commands.Cog):
         if self.bot.user.mentioned_in(message):
             if message.mention_everyone:
                 return
-            chess_emojis = Config.config["fun"]["chess_emojis"]
+            chess_emojis = config.config["fun"]["chess_emojis"]
             emoji, id = random.choice(list(chess_emojis.items()))
             await message.add_reaction(f"<:{emoji}:{id}>")
 
@@ -33,8 +32,9 @@ class Fun(commands.Cog):
             await message.reply("Osu 😻")
 
         # User-specific reactions
-        if random.randint(1, 100) <= 15 and message.author.id in SPECIAL_USERS:
-            emoji_set = random.choice(SPECIAL_USERS[message.author.id])
+        special_users = config.config["fun"]["special_users"]
+        if random.randint(1, 100) <= 15 and message.author.id in special_users:
+            emoji_set = random.choice(special_users[message.author.id])
             if isinstance(emoji_set, list):
                 # List of reactions
                 for emoji in emoji_set:

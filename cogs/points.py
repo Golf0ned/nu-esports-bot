@@ -71,10 +71,16 @@ class Points(commands.Cog):
         # TODO
         await ctx.respond("TODO")
 
-    @points_prediction.command(name="cancel", description="Cancel prediction", guild_ids=[GUILD_ID])
+    @points_prediction.command(name="cancel", description="Cancel prediction and refund users", guild_ids=[GUILD_ID])
     async def cancel_prediction(self, ctx):
-        # TODO
-        await ctx.respond("TODO")
+        prediction = self.predictions.get(ctx.user.id, None)
+        if not prediction:
+            await ctx.respond("You don't have a prediction open.", ephemeral=True)
+            return
+        
+        await prediction.cancel_prediction()
+
+        await ctx.respond("Prediction refunded.", ephemeral=True)
 
 
     @tasks.loop(seconds=60)
@@ -87,7 +93,7 @@ class Points(commands.Cog):
             ON CONFLICT (discordid)
             DO UPDATE SET points = users.points + EXCLUDED.points;
         """
-        data = [(user_id, message_count) for user_id, message_count in self.points_buffer.items()]
+        data = [(user_id, points) for user_id, points in self.points_buffer.items()]
         await db.perform_many(sql, data)
 
         self.points_buffer.clear()
@@ -109,9 +115,17 @@ class Prediction:
             title=self.title,
             color=discord.Color.from_rgb(78, 42, 132),
         )
-        view = PredictionView(self.option_a, self.option_b, embed)
-        await self.thread.send("", embed=view.update_embed(), view=view)
+        self.view = PredictionView(self.option_a, self.option_b, embed)
+        self.message = await self.thread.send("", embed=self.view.update_embed(), view=self.view)
 
+    async def cancel_prediction(self):
+        sql = "UPDATE users SET points = points + %s WHERE discordid = %s;"
+        data = [(points, user_id) for user_id, points in self.view.option_a_points.items()] + \
+               [(points, user_id) for user_id, points in self.view.option_b_points.items()]
+        print(sql)
+        print(data)
+        await db.perform_many(sql, data)
+        await self.message.reply("Prediction cancelled. Points refunded.")
 
 class PredictionView(discord.ui.View):
     def __init__(self, option_a, option_b, embed):

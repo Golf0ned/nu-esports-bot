@@ -201,8 +201,10 @@ class PredictionModal(discord.ui.Modal):
         self.view_callback = callback
 
         self.add_item(discord.ui.InputText(
-            label="How many points do you want to wager?"
-            # TODO: make prettier
+            label="How many points do you want to wager?",
+            required=True,
+            min_length=1,
+            placeholder="Enter a number greater than 0",
         ))
 
     async def callback(self, interaction):

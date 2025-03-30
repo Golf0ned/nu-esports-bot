@@ -27,3 +27,26 @@ async def cursor():
             raise e
         finally:
             await conn.close()
+
+async def fetch_one(sql, parameters=None):
+    async with cursor() as cur:
+        await cur.execute(sql, parameters)
+        result = await cur.fetchone()
+    return result
+
+
+async def fetch_all(sql, parameters=None):
+    async with cursor() as cur:
+        await cur.execute(sql, parameters)
+        result = await cur.fetchall()
+    return result
+
+
+async def perform_one(sql, parameters=None):
+    async with cursor() as cur:
+        await cur.execute(sql, parameters)
+
+
+async def perform_many(sql, parameters):
+    async with cursor() as cur:
+        await cur.executemany(sql, parameters)

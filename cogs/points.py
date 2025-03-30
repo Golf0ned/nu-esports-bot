@@ -66,10 +66,20 @@ class Points(commands.Cog):
         await ctx.respond("TODO")
 
     @points_prediction.command(name="complete", description="Complete prediction and reward users", guild_ids=[GUILD_ID])
-    async def complete_prediction(self, ctx, winner):
-        # TODO: figure out parameters
-        # TODO
-        await ctx.respond("TODO")
+    async def complete_prediction(self, ctx, winner: str):
+        prediction = self.predictions.get(ctx.user.id, None)
+        if not prediction:
+            await ctx.respond("You don't have a prediction open.", ephemeral=True)
+            return
+        if winner not in [prediction.option_a, prediction.option_b]:
+            await ctx.respond(f"Winner must be one of the options: `{prediction.option_a}` or `{prediction.option_b}`", ephemeral=True)
+            return
+
+        await prediction.complete_prediction(winner)
+        del self.predictions[ctx.user.id]
+
+        await ctx.respond(f"Prediction completed.", ephemeral=True)
+
 
     @points_prediction.command(name="cancel", description="Cancel prediction and refund users", guild_ids=[GUILD_ID])
     async def cancel_prediction(self, ctx):
@@ -119,12 +129,34 @@ class Prediction:
         self.view = PredictionView(self.option_a, self.option_b, embed)
         self.message = await self.thread.send("", embed=self.view.update_embed(), view=self.view)
 
+    async def complete_prediction(self, winner):
+        sql = "UPDATE users SET points = points + %s WHERE discordid = %s;"
+        if winner == self.option_a:
+            payout = self.view.odds_a
+            data = [(round(points * payout), user_id) for user_id, points in self.view.option_a_points.items()]
+        else:
+            payout = self.view.odds_b
+            data = [(round(points * payout), user_id) for user_id, points in self.view.option_b_points.items()]
+        await db.perform_many(sql, data)
+        format = "Prediction completed -- {} points distributed to {} ({}x payout)."
+        if winner == self.option_a:
+            message = format.format(
+                sum(self.view.option_b_points.values()),
+                self.option_a,
+                round(payout, 2),
+            )
+        else:
+            message = format.format(
+                sum(self.view.option_a_points.values()),
+                self.option_b,
+                round(payout, 2),
+            )
+        await self.message.reply(message)
+
     async def cancel_prediction(self):
         sql = "UPDATE users SET points = points + %s WHERE discordid = %s;"
         data = [(points, user_id) for user_id, points in self.view.option_a_points.items()] + \
                [(points, user_id) for user_id, points in self.view.option_b_points.items()]
-        print(sql)
-        print(data)
         await db.perform_many(sql, data)
         await self.message.reply("Prediction cancelled. Points refunded.")
 
@@ -160,12 +192,15 @@ class PredictionView(discord.ui.View):
     def update_embed(self):
         # TODO: add odds
         self.embed.clear_fields()
-        format = "{} points\n{} users"
+        format = "{} points\n{} users\n{}x payout"
+        self.odds_a = 1 + (sum(self.option_b_points.values()) / sum(self.option_a_points.values())) if self.option_a_points else 1
+        self.odds_b = 1 + (sum(self.option_a_points.values()) / sum(self.option_b_points.values())) if self.option_b_points else 1
         self.embed.add_field(
             name=self.option_a,
             value=format.format(
                 sum(self.option_a_points.values()),
-                len(self.option_a_points)
+                len(self.option_a_points),
+                round(self.odds_a, 2),
             ),
         )
         self.embed.add_field(
@@ -173,6 +208,7 @@ class PredictionView(discord.ui.View):
             value=format.format(
                 sum(self.option_b_points.values()),
                 len(self.option_b_points),
+                round(self.odds_b, 2),
             ),
         )
         return self.embed

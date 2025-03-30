@@ -195,7 +195,11 @@ class PredictionView(discord.ui.View):
                 ]):
                     await interaction.response.send_message(f"{interaction.user.mention} tried to change sides...")
                     return
-                await interaction.response.send_modal(PredictionModal(self.modal_callback, label))
+                sql = "SELECT points FROM users WHERE discordid = %s"
+                data = [interaction.user.id]
+                result = await db.fetch_one(sql, data)
+
+                await interaction.response.send_modal(PredictionModal(self.modal_callback, label, result[0] if result else 0))
 
             button = discord.ui.Button(label=label)
             button.callback = button_callback
@@ -256,13 +260,14 @@ class PredictionView(discord.ui.View):
 
 
 class PredictionModal(discord.ui.Modal):
-    def __init__(self, callback, option):
+    def __init__(self, callback, option, user_points):
         super().__init__(title="Prediction")
         self.view_callback = callback
         self.option = option
+        self.user_points = user_points
 
         self.add_item(discord.ui.InputText(
-            label="How many points do you want to wager?",
+            label=f"How many points? ({self.user_points} available)",
             required=True,
             min_length=1,
             placeholder="Enter a number greater than 0",
@@ -279,11 +284,7 @@ class PredictionModal(discord.ui.Modal):
             await interaction.response.send_message("You must wager more than 0 points!", ephemeral=True)
             return
 
-        sql = "SELECT points FROM users WHERE discordid = %s"
-        data = [interaction.user.id]
-        result = await db.fetch_one(sql, data)
-
-        if result is None or result[0] < points:
+        if self.user_points < points:
             await interaction.response.send_message("You don't have enough points!", ephemeral=True)
             return
 

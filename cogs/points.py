@@ -62,6 +62,23 @@ class Points(commands.Cog):
         self.predictions[ctx.user.id] = prediction
         await ctx.respond(f"Prediction created! {thread.mention}", ephemeral=True)
 
+    @points_prediction.command(name="close", description="Close prediction and prevent new users from joining", guild_ids=[GUILD_ID])
+    async def close_prediction(self, ctx):
+        # TODO
+        await ctx.respond("TODO")
+
+    @points_prediction.command(name="complete", description="Complete prediction and reward users", guild_ids=[GUILD_ID])
+    async def complete_prediction(self, ctx, winner):
+        # TODO: figure out parameters
+        # TODO
+        await ctx.respond("TODO")
+
+    @points_prediction.command(name="cancel", description="Cancel prediction", guild_ids=[GUILD_ID])
+    async def cancel_prediction(self, ctx):
+        # TODO
+        await ctx.respond("TODO")
+
+
     @tasks.loop(seconds=60)
     async def update_points(self):
         if not self.points_buffer:
@@ -142,6 +159,10 @@ class PredictionView(discord.ui.View):
             ),
         )
         return self.embed
+
+    async def on_timeout(self):
+        self.disable_all_items()
+        await self.message.edit(view=self)
 
     async def option_a_modal_callback(self, user, points):
         prev_a = self.option_a_points.pop(user.id, None)

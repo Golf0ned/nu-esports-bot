@@ -79,6 +79,7 @@ class Points(commands.Cog):
             return
         
         await prediction.cancel_prediction()
+        del self.predictions[ctx.user.id]
 
         await ctx.respond("Prediction refunded.", ephemeral=True)
 

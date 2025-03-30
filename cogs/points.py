@@ -45,8 +45,8 @@ class Points(commands.Cog):
         )
         await ctx.respond(embed=embed)
 
-    @points_prediction.command(name="create", description="Create a prediction", guild_ids=[GUILD_ID])
-    async def create_prediction(self, ctx, title: str, option_a: str, option_b: str):
+    @points_prediction.command(name="start", description="Start a prediction", guild_ids=[GUILD_ID])
+    async def start_prediction(self, ctx, title: str, option_a: str, option_b: str):
         if ctx.user.id in self.predictions:
             await ctx.respond("You already have a prediction open.")
             return
@@ -61,17 +61,17 @@ class Points(commands.Cog):
         await prediction.create_prediction()
 
         self.predictions[ctx.user.id] = prediction
-        await ctx.respond(f"Prediction created! {thread.mention}", ephemeral=True)
+        await ctx.respond(f"Prediction started: {thread.mention}", ephemeral=True)
 
-    @points_prediction.command(name="close", description="Close prediction and stop further users from joining", guild_ids=[GUILD_ID])
-    async def close_prediction(self, ctx):
+    @points_prediction.command(name="lock", description="Lock prediction and stop further users from joining", guild_ids=[GUILD_ID])
+    async def lock_prediction(self, ctx):
         prediction = self.predictions.get(ctx.user.id, None)
         if not prediction:
             await ctx.respond("You don't have a prediction open.", ephemeral=True)
             return
 
-        await prediction.close_prediction()
-        await ctx.respond("Prediction closed.", ephemeral=True)
+        await prediction.lock_prediction()
+        await ctx.respond("Prediction locked.", ephemeral=True)
 
     @points_prediction.command(name="complete", description="Complete prediction and reward users", guild_ids=[GUILD_ID])
     async def complete_prediction(self, ctx, winner: str):
@@ -86,17 +86,17 @@ class Points(commands.Cog):
         await prediction.complete_prediction(winner)
         del self.predictions[ctx.user.id]
 
-        await ctx.respond(f"Prediction completed.", ephemeral=True)
+        await ctx.respond(f"Prediction completed for {winner}.", ephemeral=True)
 
 
-    @points_prediction.command(name="cancel", description="Cancel prediction and refund users", guild_ids=[GUILD_ID])
+    @points_prediction.command(name="refund", description="Cancel prediction and refund users", guild_ids=[GUILD_ID])
     async def cancel_prediction(self, ctx):
         prediction = self.predictions.get(ctx.user.id, None)
         if not prediction:
             await ctx.respond("You don't have a prediction open.", ephemeral=True)
             return
         
-        await prediction.cancel_prediction()
+        await prediction.refund_prediction()
         del self.predictions[ctx.user.id]
 
         await ctx.respond("Prediction refunded.", ephemeral=True)
@@ -137,9 +137,9 @@ class Prediction:
         self.view = PredictionView(self.option_a, self.option_b, embed)
         self.message = await self.thread.send("", embed=self.view.update_embed(), view=self.view)
 
-    async def close_prediction(self):
+    async def lock_prediction(self):
         await self.view.on_timeout()
-        await self.message.reply("Prediction closed.")
+        await self.message.reply("Prediction locked.")
 
 
     async def complete_prediction(self, winner):
@@ -167,7 +167,7 @@ class Prediction:
         await self.view.on_timeout()
         await self.message.reply(message)
 
-    async def cancel_prediction(self):
+    async def refund_prediction(self):
         sql = "UPDATE users SET points = points + %s WHERE discordid = %s;"
         data = [(points, user_id) for user_id, points in self.view.option_a_points.items()] + \
                [(points, user_id) for user_id, points in self.view.option_b_points.items()]

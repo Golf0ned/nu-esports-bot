@@ -28,6 +28,7 @@ async def cursor():
         finally:
             await conn.close()
 
+
 async def fetch_one(sql, parameters=None):
     async with cursor() as cur:
         await cur.execute(sql, parameters)

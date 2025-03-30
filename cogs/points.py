@@ -35,9 +35,7 @@ class Points(commands.Cog):
 
         sql = "SELECT points FROM users WHERE discordid = %s"
         data = [user.id]
-        async with db.cursor() as cur:
-            await cur.execute(sql, data)
-            result = await cur.fetchone()
+        result = await db.fetch_one(sql, data)
 
         points = result[0] if result else 0
         embed = discord.Embed(
@@ -90,8 +88,7 @@ class Points(commands.Cog):
             DO UPDATE SET points = users.points + EXCLUDED.points;
         """
         data = [(user_id, message_count) for user_id, message_count in self.points_buffer.items()]
-        async with db.cursor() as cur:
-            await cur.executemany(sql, data)
+        await db.perform_many(sql, data)
 
         self.points_buffer.clear()
 

@@ -33,7 +33,7 @@ class Points(commands.Cog):
         if user is None:
             user = ctx.author
 
-        sql = "SELECT points FROM users WHERE discordid = %s"
+        sql = "SELECT points FROM users WHERE discordid = %s;"
         data = [user.id]
         result = await db.fetch_one(sql, data)
 
@@ -195,7 +195,7 @@ class PredictionView(discord.ui.View):
                 ]):
                     await interaction.response.send_message(f"{interaction.user.mention} tried to change sides...")
                     return
-                sql = "SELECT points FROM users WHERE discordid = %s"
+                sql = "SELECT points FROM users WHERE discordid = %s;"
                 data = [interaction.user.id]
                 result = await db.fetch_one(sql, data)
 
@@ -252,7 +252,7 @@ class PredictionView(discord.ui.View):
         if prev > 0:
             message += format_prev.format(prev)
 
-        sql = "UPDATE users SET points = points - %s WHERE discordid = %s"
+        sql = "UPDATE users SET points = points - %s WHERE discordid = %s;"
         data = [points, user.id]
         await db.perform_one(sql, data)
 

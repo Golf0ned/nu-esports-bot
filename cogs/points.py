@@ -60,10 +60,15 @@ class Points(commands.Cog):
         self.predictions[ctx.user.id] = prediction
         await ctx.respond(f"Prediction created! {thread.mention}", ephemeral=True)
 
-    @points_prediction.command(name="close", description="Close prediction and prevent new users from joining", guild_ids=[GUILD_ID])
+    @points_prediction.command(name="close", description="Close prediction and stop further users from joining", guild_ids=[GUILD_ID])
     async def close_prediction(self, ctx):
-        # TODO
-        await ctx.respond("TODO")
+        prediction = self.predictions.get(ctx.user.id, None)
+        if not prediction:
+            await ctx.respond("You don't have a prediction open.", ephemeral=True)
+            return
+
+        await prediction.close_prediction()
+        await ctx.respond("Prediction closed.", ephemeral=True)
 
     @points_prediction.command(name="complete", description="Complete prediction and reward users", guild_ids=[GUILD_ID])
     async def complete_prediction(self, ctx, winner: str):
@@ -129,6 +134,11 @@ class Prediction:
         self.view = PredictionView(self.option_a, self.option_b, embed)
         self.message = await self.thread.send("", embed=self.view.update_embed(), view=self.view)
 
+    async def close_prediction(self):
+        await self.view.on_timeout()
+        await self.message.reply("Prediction closed.")
+
+
     async def complete_prediction(self, winner):
         sql = "UPDATE users SET points = points + %s WHERE discordid = %s;"
         if winner == self.option_a:
@@ -151,6 +161,7 @@ class Prediction:
                 self.option_b,
                 round(payout, 2),
             )
+        await self.view.on_timeout()
         await self.message.reply(message)
 
     async def cancel_prediction(self):
@@ -158,6 +169,7 @@ class Prediction:
         data = [(points, user_id) for user_id, points in self.view.option_a_points.items()] + \
                [(points, user_id) for user_id, points in self.view.option_b_points.items()]
         await db.perform_many(sql, data)
+        await self.view.on_timeout()
         await self.message.reply("Prediction cancelled. Points refunded.")
 
 class PredictionView(discord.ui.View):

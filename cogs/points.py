@@ -49,14 +49,14 @@ class Points(commands.Cog):
     @points_prediction.command(name="start", description="Start a prediction", guild_ids=[GUILD_ID])
     async def start_prediction(self, ctx, title: str, option_a: str, option_b: str):
         if ctx.user.id in self.predictions:
-            await ctx.respond("You already have a prediction open.")
+            await ctx.respond("You already have a prediction open.", ephemeral=True)
             return
         if option_a == option_b:
-            await ctx.respond("Options must be different.")
+            await ctx.respond("Options must be different.", ephemeral=True)
             return
 
         message = await ctx.send(f"PREDICTION: **{title}**")
-        thread = await message.create_thread(name=f"{title}")
+        thread = await message.create_thread(name=f"PREDICTION: {title}")
 
         prediction = Prediction(title, option_a, option_b, thread)
         await prediction.create_prediction()

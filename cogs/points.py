@@ -144,6 +144,15 @@ class Prediction:
         await self.message.reply("Prediction locked.")
 
     async def complete_prediction(self, winner):
+        if not self.view.option_a_points or not self.view.option_b_points:
+            sql = "UPDATE users SET points = points + %s WHERE discordid = %s;"
+            data = [(points, user_id) for user_id, points in self.view.option_a_points.items()] + \
+                   [(points, user_id) for user_id, points in self.view.option_b_points.items()]
+            await db.perform_many(sql, data)
+            await self.view.lock_view()
+            await self.message.reply("Everyone voted the same way! Points refunded.")
+            return
+
         sql = "UPDATE users SET points = points + %s WHERE discordid = %s;"
         if winner == self.option_a:
             payout = self.view.odds_a

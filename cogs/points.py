@@ -30,20 +30,21 @@ class Points(commands.Cog):
 
     @points.command(name="balance", description="Get your points balance or another user's point balance", guild_ids=[GUILD_ID])
     async def balance(self, ctx, user: discord.Option(discord.User, default=None)):
-        if user is None:
-            user = ctx.author
+        await ctx.defer()
+
+        target_user = user if user else ctx.user
 
         sql = "SELECT points FROM users WHERE discordid = %s;"
-        data = [user.id]
+        data = [target_user.id]
         result = await db.fetch_one(sql, data)
 
         points = result[0] if result else 0
         embed = discord.Embed(
-            title=f"{user.display_name}'s points",
+            title=f"{target_user.display_name}'s points",
             description=f"{points} points",
             color=discord.Color.from_rgb(78, 42, 132),
         )
-        await ctx.respond(embed=embed)
+        await ctx.followup.send(embed=embed)
 
     @points_prediction.command(name="start", description="Start a prediction", guild_ids=[GUILD_ID])
     async def start_prediction(self, ctx, title: str, option_a: str, option_b: str):

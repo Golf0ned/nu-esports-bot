@@ -139,9 +139,9 @@ class Prediction:
         self.message = await self.thread.send("", embed=self.view.update_embed(), view=self.view)
 
     async def lock_prediction(self):
-        await self.view.on_timeout()
+        if self.view.locked: return
+        await self.view.lock_view()
         await self.message.reply("Prediction locked.")
-
 
     async def complete_prediction(self, winner):
         sql = "UPDATE users SET points = points + %s WHERE discordid = %s;"
@@ -165,7 +165,7 @@ class Prediction:
                 self.option_b,
                 round(payout, 2),
             )
-        await self.view.on_timeout()
+        await self.view.lock_view()
         await self.message.reply(message)
 
     async def refund_prediction(self):
@@ -173,7 +173,7 @@ class Prediction:
         data = [(points, user_id) for user_id, points in self.view.option_a_points.items()] + \
                [(points, user_id) for user_id, points in self.view.option_b_points.items()]
         await db.perform_many(sql, data)
-        await self.view.on_timeout()
+        await self.view.lock_view()
         await self.message.reply("Prediction cancelled. Points refunded.")
 
 class PredictionView(discord.ui.View):
@@ -187,6 +187,7 @@ class PredictionView(discord.ui.View):
 
         self.message = None
         self.embed = embed
+        self.locked = False
 
         def create_button(label):
             async def button_callback(interaction):
@@ -234,6 +235,12 @@ class PredictionView(discord.ui.View):
         return self.embed
 
     async def on_timeout(self):
+        if self.locked: return
+        await self.message.reply("Prediction locked.")
+        await self.lock_view()
+
+    async def lock_view(self):
+        self.locked = True
         self.disable_all_items()
         await self.message.edit(view=self)
 

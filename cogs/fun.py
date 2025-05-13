@@ -28,8 +28,12 @@ class Fun(commands.Cog):
             await message.add_reaction(f"<:{emoji}:{id}>")
 
         # Affirm the glory of osu!
-        if "i love osu" in message.content.lower():
+        lower_content = message.content.lower()
+        if "i love osu" in lower_content:
             await message.reply("Osu 😻")
+
+        if random.randint(1,100) <= 10 and "oh lord" in lower_content:
+            await message.reply('https://www.youtube.com/watch?v=YsoP6bjADic')
 
         # User-specific reactions
         special_users = config.config["fun"]["special_users"]

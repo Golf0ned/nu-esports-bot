@@ -86,6 +86,10 @@ gameroom:
       - 'Call of Duty: Black Ops 3'
       - 'Call of Duty: Modern Warfare II'
 
+groupme:
+  announcements_channel_id: #<channel_id>
+  student_role_id: #<role_id>
+
 teams:
 
 valorant:

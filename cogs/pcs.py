@@ -11,7 +11,7 @@ from utils import config
 GUILD_ID = config.secrets["discord"]["guild_id"]
 
 
-PCS_ENDPOINT = "https://ggleap-production.up.railway.app/machines/uptime"
+PCS_ENDPOINT = config.secrets["apis"]["pcs"]
 
 
 STATE_TO_EMOJI = {
@@ -161,6 +161,7 @@ class PCs(commands.Cog):
 
 def setup(bot):
     bot.add_cog(PCs(bot))
+
 
 
 

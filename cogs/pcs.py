@@ -150,7 +150,7 @@ class PCs(commands.Cog):
         await ctx.followup.send(embed=embed)
 
     @commands.slash_command(name="pc", description="Get a single PC's state and uptime", guild_ids=[GUILD_ID])
-    async def pc(self, ctx, pcid: discord.Option(str, name="pcid", description="e.g., Desk 009", required=True)):
+    async def pc(self, ctx, pc_number: discord.Option(str, name="pc_number", description="PC number (e.g., 1 for Desk 1, 15 for Desk 15)", required=True)):
         await ctx.defer()
         try:
             data = await self.fetch_pcs()
@@ -160,14 +160,14 @@ class PCs(commands.Cog):
 
         # Attempt exact and case-insensitive matches
         target = None
-        norm = self.normalize_key(pcid)
+        norm = self.normalize_key(pc_number)
         for key, value in data.items():
             if self.normalize_key(key) == norm:
                 target = (key, value)
                 break
         if target is None:
             # Fallback: if user provides just digits, try to match "Desk XXX"
-            digits = "".join(ch for ch in pcid if ch.isdigit())
+            digits = "".join(ch for ch in pc_number if ch.isdigit())
             if digits:
                 desired = f"desk {int(digits):03d}"
                 for key, value in data.items():
@@ -176,7 +176,7 @@ class PCs(commands.Cog):
                         break
 
         if target is None:
-            await ctx.followup.send(f"PC `{pcid}` not found.", ephemeral=True)
+            await ctx.followup.send(f"PC `{pc_number}` not found.", ephemeral=True)
             return
 
         name, info = target
@@ -186,13 +186,14 @@ class PCs(commands.Cog):
         minutes = uptime.get("minutes", 0)
 
         emoji = STATE_TO_EMOJI.get(state, ":white_large_square:")
+        display_state = STATE_TO_NAME.get(state, state)  # Map to friendly name
+        
         embed = discord.Embed(
             title=name,
-            description=f"{emoji} {state}",
+            description=f"{emoji} {display_state}",
             color=discord.Color.from_rgb(78, 42, 132),
         )
         embed.add_field(name=":clock1: Uptime", value=f"{hours}h {minutes}m", inline=True)
-        embed.set_footer(text="Source: ggleap")
 
         await ctx.followup.send(embed=embed)
 

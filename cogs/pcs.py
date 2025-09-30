@@ -21,6 +21,7 @@ RESERVATIONS_ENDPOINT = config.config["apis"]["reservations"]
 STATE_TO_EMOJI = {
     "ReadyForUser": ":green_square:",
     "UserLoggedIn": ":red_square:",
+    "AdminMode": ":red_square:",  # Treat admin as in use
     "Off": ":black_large_square:",
 }
 

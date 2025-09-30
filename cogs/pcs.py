@@ -1,10 +1,12 @@
 import asyncio
-from datetime import datetime, timedelta
+import io
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Tuple, List
 
 import aiohttp
 import discord
 from discord.ext import commands
+from PIL import Image, ImageDraw, ImageFont
 
 from utils import config
 
@@ -19,7 +21,6 @@ RESERVATIONS_ENDPOINT = config.config["apis"]["reservations"]
 STATE_TO_EMOJI = {
     "ReadyForUser": ":green_square:",
     "UserLoggedIn": ":red_square:",
-    "AdminMode": ":red_square:",
     "Off": ":black_large_square:",
 }
 
@@ -233,19 +234,11 @@ class PCs(commands.Cog):
             await ctx.followup.send(embed=embed)
             return
         
-        # Build timeline view
-        timeline = self.build_reservation_timeline(reservations, target_date)
+        # Build timeline view with interactive time range selection
+        view = ReservationView(reservations, target_date)
+        embed, file = view.build_embed_and_file()
         
-        embed = discord.Embed(
-            title=f"Reservations for {target_date.strftime('%A, %B %d, %Y')}",
-            color=discord.Color.from_rgb(78, 42, 132),
-        )
-        
-        # Add timeline as field
-        if timeline:
-            embed.description = timeline
-        
-        await ctx.followup.send(embed=embed)
+        await ctx.followup.send(embed=embed, file=file, view=view)
 
     async def fetch_reservations(self, date_str: str) -> Dict:
         timeout = aiohttp.ClientTimeout(total=10)
@@ -256,54 +249,179 @@ class PCs(commands.Cog):
                 return await resp.json()
 
     @staticmethod
-    def build_reservation_timeline(reservations: List[Dict], target_date: datetime) -> str:
-        """Build a timeline view similar to the booking interface"""
-        # Group reservations by machine
-        machine_reservations = {}
-        all_machines = set()
+    def build_reservation_image(reservations: List[Dict], target_date: datetime, start_hour: int, end_hour: int, end_minute: int = 0) -> io.BytesIO:
+        """Build a 2D grid image with time slots (x-axis) and desks (y-axis)"""
+        # CST is UTC-6
+        cst_offset = timezone(timedelta(hours=-6))
         
+        # Define all desks in order
+        all_desks = [f"Desk {i:03d}" for i in range(1, 16)] + ["Desk 000 - Streaming"]
+        
+        # Build time slots from start_hour to end_hour:end_minute in 30-minute increments
+        time_slots = []
+        base_date = target_date.replace(hour=start_hour, minute=0, second=0, microsecond=0, tzinfo=cst_offset)
+        end_time = target_date.replace(hour=end_hour, minute=end_minute, second=0, microsecond=0, tzinfo=cst_offset)
+        
+        current_time = base_date
+        while current_time <= end_time:
+            time_slots.append(current_time)
+            current_time += timedelta(minutes=30)
+        
+        # Initialize grid: desk -> set of reserved time slot indices
+        desk_reservations = {desk: set() for desk in all_desks}
+        
+        # Process reservations
         for res in reservations:
             machines = res.get("machines", [])
-            all_machines.update(machines)
+            
+            # Parse times and convert to CST
+            start_utc = datetime.fromisoformat(res.get("start_time"))
+            end_utc = datetime.fromisoformat(res.get("end_time"))
+            
+            # If times are naive, assume UTC
+            if start_utc.tzinfo is None:
+                start_utc = start_utc.replace(tzinfo=timezone.utc)
+            if end_utc.tzinfo is None:
+                end_utc = end_utc.replace(tzinfo=timezone.utc)
+            
+            # Convert to CST
+            start_cst = start_utc.astimezone(cst_offset)
+            end_cst = end_utc.astimezone(cst_offset)
+            
+            # Mark time slots as reserved for each machine
             for machine in machines:
-                if machine not in machine_reservations:
-                    machine_reservations[machine] = []
-                machine_reservations[machine].append({
-                    "name": res.get("name", "Unknown"),
-                    "start": datetime.fromisoformat(res.get("start_time")),
-                    "end": datetime.fromisoformat(res.get("end_time")),
-                })
+                if machine not in desk_reservations:
+                    continue
+                
+                # Find which time slots are covered
+                for slot_idx, slot_time in enumerate(time_slots):
+                    slot_end = slot_time + timedelta(minutes=30)
+                    # Check if this slot overlaps with the reservation
+                    if start_cst < slot_end and end_cst > slot_time:
+                        desk_reservations[machine].add(slot_idx)
         
-        # Sort machines
-        sorted_machines = sorted(all_machines, key=lambda m: PCs.extract_sort_key(m))
+        # Image dimensions
+        cell_size = 30
+        label_width = 80
+        header_height = 40
+        width = label_width + (len(time_slots) * cell_size)
+        height = header_height + (len(all_desks) * cell_size)
         
-        # Build timeline rows
-        lines = []
-        lines.append("```")
+        # Colors (Discord dark theme friendly)
+        bg_color = (47, 49, 54)  # Discord dark background
+        text_color = (220, 221, 222)  # Light gray text
+        grid_color = (60, 63, 68)  # Slightly lighter for grid lines
+        available_color = (87, 242, 135)  # Green
+        reserved_color = (155, 89, 182)  # Purple
         
-        for machine in sorted_machines:
-            # Format machine name
-            short_name = machine
-            if machine.lower().startswith("desk "):
-                remainder = machine[5:].strip()
+        # Create image
+        img = Image.new('RGB', (width, height), bg_color)
+        draw = ImageDraw.Draw(img)
+        
+        # Try to load a font, fallback to default if not available
+        try:
+            font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 14)
+            small_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 12)
+        except:
+            font = ImageFont.load_default()
+            small_font = ImageFont.load_default()
+        
+        # Draw header row (time labels)
+        for idx, slot_time in enumerate(time_slots):
+            x = label_width + (idx * cell_size)
+            if slot_time.minute == 0:
+                time_label = slot_time.strftime("%I%p").lstrip("0").lower()
+                draw.text((x + 5, 5), time_label, fill=text_color, font=small_font)
+        
+        # Draw grid and desk labels
+        for desk_idx, desk in enumerate(all_desks):
+            y = header_height + (desk_idx * cell_size)
+            
+            # Format desk name
+            short_name = desk
+            if desk.lower().startswith("desk "):
+                remainder = desk[5:].strip()
                 digits = "".join(ch for ch in remainder if ch.isdigit())
                 if digits:
                     if int(digits) == 0:
-                        short_name = "Streaming"
+                        short_name = "Stream"
                     else:
-                        short_name = f"Desk {digits.zfill(3)}"
+                        short_name = f"Desk {int(digits)}"
             
-            # Get reservations for this machine
-            res_list = machine_reservations.get(machine, [])
-            if res_list:
-                for res in res_list:
-                    start_time = res["start"].strftime("%I:%M %p").lstrip("0")
-                    end_time = res["end"].strftime("%I:%M %p").lstrip("0")
-                    name = res["name"][:30]  # Truncate long names
-                    lines.append(f"{short_name:15} | {start_time:8} - {end_time:8} | {name}")
+            # Draw desk label
+            draw.text((5, y + 8), short_name, fill=text_color, font=font)
+            
+            # Draw cells for this desk
+            reserved_slots = desk_reservations[desk]
+            for slot_idx in range(len(time_slots)):
+                x = label_width + (slot_idx * cell_size)
+                color = reserved_color if slot_idx in reserved_slots else available_color
+                
+                # Draw filled rectangle
+                draw.rectangle([x, y, x + cell_size - 2, y + cell_size - 2], fill=color, outline=grid_color)
         
-        lines.append("```")
-        return "\n".join(lines)
+        # Save to BytesIO
+        buffer = io.BytesIO()
+        img.save(buffer, format='PNG')
+        buffer.seek(0)
+        return buffer
+
+
+class ReservationView(discord.ui.View):
+    def __init__(self, reservations: List[Dict], target_date: datetime):
+        super().__init__(timeout=600)
+        self.reservations = reservations
+        self.target_date = target_date
+        self.time_range = "evening"  # Default to evening view
+        
+    def get_hours_for_range(self):
+        """Get start/end hours based on current time range and day of week"""
+        # Friday (4), Saturday (5), Sunday (6) open at noon, else 2pm
+        is_weekend = self.target_date.weekday() >= 4
+        open_hour = 12 if is_weekend else 14
+        
+        if self.time_range == "evening":
+            return (17, 22, 30)  # 5pm to 10:30pm
+        else:  # full
+            return (open_hour, 22, 30)  # Open to close
+    
+    def build_embed_and_file(self) -> Tuple[discord.Embed, discord.File]:
+        start_hour, end_hour, end_minute = self.get_hours_for_range()
+        image_buffer = PCs.build_reservation_image(
+            self.reservations,
+            self.target_date,
+            start_hour,
+            end_hour,
+            end_minute
+        )
+        
+        range_label = " (Evening)" if self.time_range == "evening" else ""
+        
+        embed = discord.Embed(
+            title=f"Reservations for {self.target_date.strftime('%A, %B %d, %Y')}{range_label}",
+            color=discord.Color.from_rgb(78, 42, 132),
+        )
+        embed.set_image(url="attachment://reservations.png")
+        embed.set_footer(text="Green = Available · Purple = Reserved")
+        
+        file = discord.File(image_buffer, filename="reservations.png")
+        return embed, file
+    
+    @discord.ui.button(label="Evening", style=discord.ButtonStyle.blurple)
+    async def evening_button(self, button: discord.ui.Button, interaction: discord.Interaction):
+        self.time_range = "evening"
+        embed, file = self.build_embed_and_file()
+        # Delete old message and send new one
+        await interaction.message.delete()
+        await interaction.response.send_message(embed=embed, file=file, view=self)
+    
+    @discord.ui.button(label="Full Day", style=discord.ButtonStyle.gray)
+    async def full_button(self, button: discord.ui.Button, interaction: discord.Interaction):
+        self.time_range = "full"
+        embed, file = self.build_embed_and_file()
+        # Delete old message and send new one
+        await interaction.message.delete()
+        await interaction.response.send_message(embed=embed, file=file, view=self)
 
 
 def setup(bot):

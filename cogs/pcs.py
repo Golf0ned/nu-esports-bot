@@ -39,6 +39,22 @@ class PCs(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    async def cog_command_error(self, ctx, error):
+        """Handle errors for commands in this cog"""
+        if isinstance(error, commands.CommandOnCooldown):
+            minutes, seconds = divmod(int(error.retry_after), 60)
+            if minutes > 0:
+                time_str = f"{minutes}m {seconds}s"
+            else:
+                time_str = f"{seconds}s"
+            await ctx.respond(
+                f"⏰ This command is on cooldown. Please try again in **{time_str}**.",
+                ephemeral=True
+            )
+        else:
+            # Re-raise other errors
+            raise error
+
     async def fetch_pcs(self) -> Dict:
         timeout = aiohttp.ClientTimeout(total=10)
         async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -110,6 +126,7 @@ class PCs(commands.Cog):
         return ("\n".join(rows) if rows else "No PCs found.", id_to_state)
 
     @commands.slash_command(name="pcs", description="Show PC statuses as a color grid", guild_ids=[GUILD_ID])
+    @commands.cooldown(1, 300, commands.BucketType.user)  
     async def pcs(self, ctx):
         await ctx.defer()
         try:
@@ -151,6 +168,7 @@ class PCs(commands.Cog):
         await ctx.followup.send(embed=embed)
 
     @commands.slash_command(name="pc", description="Get a single PC's state and uptime", guild_ids=[GUILD_ID])
+    @commands.cooldown(1, 300, commands.BucketType.user)  
     async def pc(self, ctx, pc_number: discord.Option(str, name="pc_number", description="PC number (e.g., 1 for Desk 1, 15 for Desk 15)", required=True)):
         await ctx.defer()
         try:
@@ -199,6 +217,7 @@ class PCs(commands.Cog):
         await ctx.followup.send(embed=embed)
 
     @commands.slash_command(name="reservations", description="Show PC reservations for a date", guild_ids=[GUILD_ID])
+    @commands.cooldown(1, 300, commands.BucketType.user)  
     async def reservations(
         self,
         ctx,

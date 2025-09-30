@@ -235,9 +235,9 @@ class PCs(commands.Cog):
             await ctx.followup.send(embed=embed)
             return
         
-        # Build timeline view with interactive time range selection
-        view = ReservationView(reservations, target_date)
-        embed, file = view.build_embed_and_file()
+        # Build timeline view with interactive date navigation
+        view = ReservationView(reservations, target_date, self)
+        embed, file = await view.build_embed_and_file()
         
         await ctx.followup.send(embed=embed, file=file, view=view)
 
@@ -369,24 +369,20 @@ class PCs(commands.Cog):
 
 
 class ReservationView(discord.ui.View):
-    def __init__(self, reservations: List[Dict], target_date: datetime):
+    def __init__(self, reservations: List[Dict], target_date: datetime, cog: 'PCs'):
         super().__init__(timeout=600)
         self.reservations = reservations
         self.target_date = target_date
-        self.time_range = "evening"  # Default to evening view
+        self.cog = cog
         
     def get_hours_for_range(self):
-        """Get start/end hours based on current time range and day of week"""
+        """Get start/end hours based on day of week"""
         # Friday (4), Saturday (5), Sunday (6) open at noon, else 2pm
         is_weekend = self.target_date.weekday() >= 4
         open_hour = 12 if is_weekend else 14
-        
-        if self.time_range == "evening":
-            return (17, 22, 30)  # 5pm to 10:30pm
-        else:  # full
-            return (open_hour, 22, 30)  # Open to close
+        return (open_hour, 22, 30)  # Open to close
     
-    def build_embed_and_file(self) -> Tuple[discord.Embed, discord.File]:
+    async def build_embed_and_file(self) -> Tuple[discord.Embed, discord.File]:
         start_hour, end_hour, end_minute = self.get_hours_for_range()
         image_buffer = PCs.build_reservation_image(
             self.reservations,
@@ -396,10 +392,8 @@ class ReservationView(discord.ui.View):
             end_minute
         )
         
-        range_label = " (Evening)" if self.time_range == "evening" else ""
-        
         embed = discord.Embed(
-            title=f"Reservations for {self.target_date.strftime('%A, %B %d, %Y')}{range_label}",
+            title=f"Reservations for {self.target_date.strftime('%A, %B %d, %Y')}",
             color=discord.Color.from_rgb(78, 42, 132),
         )
         embed.set_image(url="attachment://reservations.png")
@@ -408,21 +402,49 @@ class ReservationView(discord.ui.View):
         file = discord.File(image_buffer, filename="reservations.png")
         return embed, file
     
-    @discord.ui.button(label="Evening", style=discord.ButtonStyle.blurple)
-    async def evening_button(self, button: discord.ui.Button, interaction: discord.Interaction):
-        self.time_range = "evening"
-        embed, file = self.build_embed_and_file()
-        # Delete old message and send new one
-        await interaction.message.delete()
-        await interaction.response.send_message(embed=embed, file=file, view=self)
+    @discord.ui.button(label="◀ Previous Day", style=discord.ButtonStyle.gray)
+    async def previous_day_button(self, button: discord.ui.Button, interaction: discord.Interaction):
+        await interaction.response.defer()
+        # Go back one day
+        new_date = self.target_date - timedelta(days=1)
+        date_str = new_date.strftime("%Y-%m-%d")
+        
+        try:
+            data = await self.cog.fetch_reservations(date_str)
+            reservations = data.get("reservations", [])
+            
+            # Update view with new data
+            self.target_date = new_date
+            self.reservations = reservations
+            embed, file = await self.build_embed_and_file()
+            
+            await interaction.message.delete()
+            await interaction.followup.send(embed=embed, file=file, view=self)
+        except Exception as e:
+            print(e)
+            await interaction.followup.send("Failed to fetch reservations for that date.", ephemeral=True)
     
-    @discord.ui.button(label="Full Day", style=discord.ButtonStyle.gray)
-    async def full_button(self, button: discord.ui.Button, interaction: discord.Interaction):
-        self.time_range = "full"
-        embed, file = self.build_embed_and_file()
-        # Delete old message and send new one
-        await interaction.message.delete()
-        await interaction.response.send_message(embed=embed, file=file, view=self)
+    @discord.ui.button(label="Next Day ▶", style=discord.ButtonStyle.gray)
+    async def next_day_button(self, button: discord.ui.Button, interaction: discord.Interaction):
+        await interaction.response.defer()
+        # Go forward one day
+        new_date = self.target_date + timedelta(days=1)
+        date_str = new_date.strftime("%Y-%m-%d")
+        
+        try:
+            data = await self.cog.fetch_reservations(date_str)
+            reservations = data.get("reservations", [])
+            
+            # Update view with new data
+            self.target_date = new_date
+            self.reservations = reservations
+            embed, file = await self.build_embed_and_file()
+            
+            await interaction.message.delete()
+            await interaction.followup.send(embed=embed, file=file, view=self)
+        except Exception as e:
+            print(e)
+            await interaction.followup.send("Failed to fetch reservations for that date.", ephemeral=True)
 
 
 def setup(bot):

@@ -14,8 +14,9 @@ from utils import config
 GUILD_ID = config.secrets["discord"]["guild_id"]
 
 
-PCS_ENDPOINT = config.config["apis"]["uptime"]
-RESERVATIONS_ENDPOINT = config.config["apis"]["reservations"]
+GGLEAP_BASE_URL = config.config["apis"]["ggleap"]
+PCS_ENDPOINT = f"{GGLEAP_BASE_URL}/machines/uptime"
+RESERVATIONS_ENDPOINT = f"{GGLEAP_BASE_URL}/reservations"
 
 
 STATE_TO_EMOJI = {

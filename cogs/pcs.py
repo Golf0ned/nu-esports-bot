@@ -569,8 +569,7 @@ class ReservationView(discord.ui.View):
             self.reservations = reservations
             embed, file = await self.build_embed_and_file()
             
-            await interaction.message.delete()
-            await interaction.followup.send(embed=embed, file=file, view=self)
+            await interaction.message.edit(embed=embed, file=file, view=self)
         except Exception as e:
             print(e)
             await interaction.followup.send("Failed to fetch reservations for that date.", ephemeral=True)

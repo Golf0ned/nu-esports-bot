@@ -86,11 +86,62 @@ class PCs(commands.Cog):
         return (10**9, name)
 
     @staticmethod
-    def build_grid(data: Dict, columns: int = 5) -> Tuple[str, Dict[str, str]]:
+    def build_grid(data: Dict, reservations: List[Dict] = None, columns: int = 5) -> Tuple[str, Dict[str, str]]:
         # Returns (grid_text, id_to_state)
-        # Filter out SAIT TEST machine
-        filtered_data = {k: v for k, v in data.items() if not k.startswith("SAIT TEST")}
+        # Filter out SAIT TEST machine, Desk 14, Desk 15, and Streaming
+        def should_include(name: str) -> bool:
+            if name.startswith("SAIT TEST"):
+                return False
+            # Check if it's Desk 14, 15, or Streaming (Desk 000)
+            if name.lower().startswith("desk "):
+                remainder = name[5:].strip()
+                digits = "".join(ch for ch in remainder if ch.isdigit())
+                if digits:
+                    desk_num = int(digits)
+                    if desk_num in [0, 14, 15]:  # 0 is Streaming
+                        return False
+            return True
+        
+        filtered_data = {k: v for k, v in data.items() if should_include(k)}
         items = sorted(filtered_data.items(), key=lambda kv: PCs.extract_sort_key(kv[0]))
+
+        # Build upcoming reservations map (desk -> minutes until reservation)
+        # and currently reserved desks
+        upcoming_reservations = {}
+        currently_reserved = set()
+        if reservations:
+            THRESHOLD_MINUTES = 30
+            cst_offset = timezone(timedelta(hours=-6))
+            now = datetime.now(cst_offset)
+            
+            for res in reservations:
+                machines = res.get("machines", [])
+                start_time_str = res.get("start_time")
+                end_time_str = res.get("end_time")
+                if not start_time_str or not end_time_str:
+                    continue
+                    
+                # Parse and convert to CST
+                start_utc = datetime.fromisoformat(start_time_str)
+                end_utc = datetime.fromisoformat(end_time_str)
+                if start_utc.tzinfo is None:
+                    start_utc = start_utc.replace(tzinfo=timezone.utc)
+                if end_utc.tzinfo is None:
+                    end_utc = end_utc.replace(tzinfo=timezone.utc)
+                start_cst = start_utc.astimezone(cst_offset)
+                end_cst = end_utc.astimezone(cst_offset)
+                
+                # Check if reservation is currently active
+                if start_cst <= now <= end_cst:
+                    for machine in machines:
+                        currently_reserved.add(machine)
+                
+                # Check if reservation starts soon
+                time_diff = (start_cst - now).total_seconds() / 60  # minutes
+                if 0 < time_diff <= THRESHOLD_MINUTES:
+                    for machine in machines:
+                        if machine not in upcoming_reservations or time_diff < upcoming_reservations[machine]:
+                            upcoming_reservations[machine] = int(time_diff)
 
         id_to_state: Dict[str, str] = {}
         cells = []
@@ -116,7 +167,27 @@ class PCs(commands.Cog):
                     else:
                         short = digits.zfill(3)
             
-            cells.append(f"{emoji} `{short}` {hours}h {minutes}m")
+            # Check if this PC should be highlighted (can be kicked off)
+            # Criteria: uptime > 2 hours AND not currently in a reserved block
+            total_minutes = (hours * 60) + minutes
+            should_bold = total_minutes > 120 and name not in currently_reserved and state != "ReadyForUser"
+            
+            # Build base cell text
+            if state == "ReadyForUser":
+                cell_text = f"{emoji} `{short}`"
+            else:
+                uptime_text = f"{hours}h {minutes}m"
+                if should_bold:
+                    cell_text = f"{emoji} **`{short}` {uptime_text}**"
+                else:
+                    cell_text = f"{emoji} `{short}` {uptime_text}"
+            
+            # Add upcoming reservation warning if applicable
+            if name in upcoming_reservations:
+                minutes_until = upcoming_reservations[name]
+                cell_text += f" *Reserved in {minutes_until}m"
+            
+            cells.append(cell_text)
 
         # Build rows
         rows = []
@@ -136,7 +207,19 @@ class PCs(commands.Cog):
             await ctx.followup.send("Failed to fetch PC statuses. Please try again later.", ephemeral=True)
             return
 
-        grid, id_to_state = self.build_grid(data)
+        # Fetch reservations for upcoming reservation warnings
+        try:
+            # Get current time in CST (UTC-6)
+            cst_offset = timezone(timedelta(hours=-6))
+            today = datetime.now(cst_offset)
+            date_str = today.strftime("%Y-%m-%d")
+            reservations_data = await self.fetch_reservations(date_str)
+            reservations = reservations_data.get("reservations", [])
+        except Exception as e:
+            print(f"Failed to fetch reservations: {e}")
+            reservations = []
+
+        grid, id_to_state = self.build_grid(data, reservations)
 
         # Tally counts by state, combining AdminMode into UserLoggedIn
         counts: Dict[str, int] = {}
@@ -164,6 +247,7 @@ class PCs(commands.Cog):
         )
         embed.add_field(name="Legend", value=legend or "No data", inline=False)
         embed.add_field(name="Grid", value=grid, inline=False)
+        embed.set_footer(text="Bold text = Can be kicked off (>2hrs, not reserved)")
 
         await ctx.followup.send(embed=embed)
 
@@ -176,6 +260,17 @@ class PCs(commands.Cog):
         except Exception as e:
             await ctx.followup.send("Failed to fetch PC data. Please try again later.", ephemeral=True)
             return
+
+        # Fetch reservations to check if PC is currently reserved
+        try:
+            cst_offset = timezone(timedelta(hours=-6))
+            today = datetime.now(cst_offset)
+            date_str = today.strftime("%Y-%m-%d")
+            reservations_data = await self.fetch_reservations(date_str)
+            reservations = reservations_data.get("reservations", [])
+        except Exception as e:
+            print(f"Failed to fetch reservations: {e}")
+            reservations = []
 
         # Attempt exact and case-insensitive matches
         target = None
@@ -204,15 +299,49 @@ class PCs(commands.Cog):
         hours = uptime.get("hours", 0)
         minutes = uptime.get("minutes", 0)
 
+        # Check if PC is currently in a reserved block
+        currently_reserved = False
+        now = datetime.now(cst_offset)
+        for res in reservations:
+            machines = res.get("machines", [])
+            if name not in machines:
+                continue
+            start_time_str = res.get("start_time")
+            end_time_str = res.get("end_time")
+            if not start_time_str or not end_time_str:
+                continue
+            
+            start_utc = datetime.fromisoformat(start_time_str)
+            end_utc = datetime.fromisoformat(end_time_str)
+            if start_utc.tzinfo is None:
+                start_utc = start_utc.replace(tzinfo=timezone.utc)
+            if end_utc.tzinfo is None:
+                end_utc = end_utc.replace(tzinfo=timezone.utc)
+            start_cst = start_utc.astimezone(cst_offset)
+            end_cst = end_utc.astimezone(cst_offset)
+            
+            if start_cst <= now <= end_cst:
+                currently_reserved = True
+                break
+
         emoji = STATE_TO_EMOJI.get(state, ":white_large_square:")
         display_state = STATE_TO_NAME.get(state, state)  # Map to friendly name
+        
+        # Check if PC can be kicked off (uptime > 2hrs and not reserved)
+        total_minutes = (hours * 60) + minutes
+        can_kick = total_minutes > 120 and not currently_reserved and state != "ReadyForUser"
         
         embed = discord.Embed(
             title=name,
             description=f"{emoji} {display_state}",
             color=discord.Color.from_rgb(78, 42, 132),
         )
-        embed.add_field(name=":clock1: Uptime", value=f"{hours}h {minutes}m", inline=True)
+        
+        uptime_value = f"**{hours}h {minutes}m**" if can_kick else f"{hours}h {minutes}m"
+        embed.add_field(name=":clock1: Uptime", value=uptime_value, inline=True)
+        
+        if can_kick:
+            embed.add_field(name="⚠️ Status", value="Can be kicked off (>2hrs, not reserved)", inline=False)
 
         await ctx.followup.send(embed=embed)
 
@@ -225,7 +354,8 @@ class PCs(commands.Cog):
     ):
         await ctx.defer()
         
-        # Parse or default to today
+        # Parse or default to today (in CST)
+        cst_offset = timezone(timedelta(hours=-6))
         if date:
             try:
                 target_date = datetime.strptime(date, "%Y-%m-%d")
@@ -233,7 +363,7 @@ class PCs(commands.Cog):
                 await ctx.followup.send("Invalid date format. Please use YYYY-MM-DD (e.g., 2025-09-30)", ephemeral=True)
                 return
         else:
-            target_date = datetime.now()
+            target_date = datetime.now(cst_offset)
         
         date_str = target_date.strftime("%Y-%m-%d")
         
@@ -276,8 +406,8 @@ class PCs(commands.Cog):
         # CST is UTC-6
         cst_offset = timezone(timedelta(hours=-6))
         
-        # Define all desks in order
-        all_desks = [f"Desk {i:03d}" for i in range(1, 16)] + ["Desk 000 - Streaming"]
+        # Define desks to show: 1-10, 14, 15, and Streaming
+        all_desks = [f"Desk {i:03d}" for i in range(1, 11)] + ["Desk 014", "Desk 015", "Desk 000 - Streaming"]
         
         # Build time slots from start_hour to end_hour:end_minute in 30-minute increments
         time_slots = []

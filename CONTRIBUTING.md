@@ -24,12 +24,18 @@ After following the steps, you should have a local instance of the bot that you 
 
 ## Making Changes
 
-(TODO)
+After making changes, you'll need to rebuild the Docker image when running. When testing your changes, it may be helpful to run:
+
+```bash
+docker compose up --build
+```
+
+There is no formal testing framework as of writing this guide. However, make sure your code works locally! We don't want Miku to crash and go on strike.
 
 ## Submitting a Patch
 
 Create a pull request on GitHub. Try to make the name and description reasonably descriptive of what was changed.
 
-(TODO: formatter/linter)
+(TODO: formatting/linting? ben pls)
 
 After submitting a pull request, a maintainer will review the patch. They will either request changes (which should be resolved in some fashion before approval), or if it all looks good, approve and merge the pull request.

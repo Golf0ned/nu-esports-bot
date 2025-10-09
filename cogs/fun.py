@@ -12,32 +12,25 @@ GUILD_ID = config.secrets["discord"]["guild_id"]
 class Fun(commands.Cog):
 
     def __init__(self, bot):
-        self.bot = bot    
+        self.bot = bot
 
     @commands.Cog.listener()
     async def on_message(self, message):
         if message.author == self.bot.user:
             return
            
-        if chess(self, message) != None:
-            output = chess(self, message)
+        if (output := chess(self, message)) != None:
             await message.add_reaction(output)
         
-        if i_love_osu(message) != None:
-            output = i_love_osu(message)
+        if (output := i_love_osu(message)) != None:
             await message.reply(output)
     
-        if oh_lord(message) != None:
-            output = oh_lord(message)
+        if (output := oh_lord(message)) != None:
             await message.reply(output)
         
-        if special_interactions(message) != None:
-            output = special_interactions(message)
-            if isinstance(output, list):
-                for emoji in output:
-                    await message.add_reaction(emoji)
-            else:
-                await message.add_reaction(output)
+        if (output := special_interactions(message)) != None:
+            for emoji in output:
+                await message.add_reaction(emoji)
        
     
 def chess(self, message):

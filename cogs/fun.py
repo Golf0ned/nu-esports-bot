@@ -19,16 +19,16 @@ class Fun(commands.Cog):
         if message.author == self.bot.user:
             return
            
-        if (output := chess(self, message)) != None:
+        if (output := chess(self, message)):
             await message.add_reaction(output)
         
-        if (output := i_love_osu(message)) != None:
+        if (output := i_love_osu(message)):
             await message.reply(output)
     
-        if (output := oh_lord(message)) != None:
+        if (output := oh_lord(message)):
             await message.reply(output)
         
-        if (output := special_interactions(message)) != None:
+        if (output := special_interactions(message)):
             for emoji in output:
                 await message.add_reaction(emoji)
        

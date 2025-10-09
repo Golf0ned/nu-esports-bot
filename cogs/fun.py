@@ -19,46 +19,58 @@ class Fun(commands.Cog):
         if message.author == self.bot.user:
             return
            
-        chess(self, message)
-        i_love_osu(message)
-        oh_lord(message)
-        special_interactions(message)
+        if chess(self, message) != None:
+            output = chess(self, message)
+            await message.add_reaction(output)
+        
+        if i_love_osu(message) != None:
+            output = i_love_osu(message)
+            await message.reply(output)
+    
+        if oh_lord(message) != None:
+            output = oh_lord(message)
+            await message.reply(output)
+        
+        if special_interactions(message) != None:
+            output = special_interactions(message)
+            if isinstance(output, list):
+                for emoji in output:
+                    await message.add_reaction(emoji)
+            else:
+                await message.add_reaction(output)
        
     
 def chess(self, message):
     if self.bot.user.mentioned_in(message):
         if message.mention_everyone:
-            return
+            return None
         
         chess_emojis = config.config["fun"]["chess_emojis"]
         emoji, id = random.choice(list(chess_emojis.items()))
-        await message.add_reaction(f"<:{emoji}:{id}>")
-
+        output = f"<:{emoji}:{id}>" # message.add_reaction(output)
+        return output
+    
 def i_love_osu(message):
     lower_content = message.content.lower()
     if "i love osu" in lower_content:
-        await message.reply("Osu 😻")
+        output = "Osu 😻" # message.reply(output)
+        return output
+    return None
 
 def oh_lord(message):
     lower_content = message.content.lower()
     if random.randint(1,100) <= 10 and "oh lord" in lower_content:
-        await message.reply('https://www.youtube.com/watch?v=YsoP6bjADic')
+        output = 'https://www.youtube.com/watch?v=YsoP6bjADic'  # message.reply(output)
+        return output
+    return None
 
 def special_interactions(message):
     special_users = config.config["fun"]["special_users"]
     if random.randint(1, 100) <= 15 and message.author.id in special_users:
-        emoji_set = random.choice(special_users[message.author.id])
-        if isinstance(emoji_set, list):
-            # List of reactions
-            for emoji in emoji_set:
-                await message.add_reaction(emoji)
-        else:
-            # Single reaction
-            await message.add_reaction(emoji_set)
-    
-    
-
-
+        output = [ random.choice(special_users[message.author.id])]
+        return output    
+    return None   
+        
 
 def setup(bot):
     bot.add_cog(Fun(bot))

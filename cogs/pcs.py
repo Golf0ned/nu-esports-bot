@@ -1,4 +1,3 @@
-import asyncio
 import io
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Tuple, List
@@ -9,6 +8,7 @@ from discord.ext import commands
 from PIL import Image, ImageDraw, ImageFont
 
 from utils import config
+from utils import db
 
 
 GUILD_ID = config.secrets["discord"]["guild_id"]
@@ -18,6 +18,14 @@ GGLEAP_BASE_URL = config.config["apis"]["ggleap"]
 PCS_ENDPOINT = f"{GGLEAP_BASE_URL}/machines/uptime"
 RESERVATIONS_ENDPOINT = f"{GGLEAP_BASE_URL}/reservations"
 
+# Constants
+CST_OFFSET = timezone(timedelta(hours=-6))
+ADVANCE_BOOKING_DAYS = 2
+MAX_MAIN_ROOM_PCS = 5
+BACK_ROOM_PCS = [0, 14, 15]  # 0 = Streaming, 14 = Back Room 1, 15 = Back Room 2
+MAIN_ROOM_PCS = list(range(1, 11))
+PRIME_TIME_WEEKDAY_HOUR = 19  # 7 PM
+PRIME_TIME_WEEKEND_HOUR = 18  # 6 PM
 
 STATE_TO_EMOJI = {
     "ReadyForUser": ":green_square:",
@@ -38,6 +46,78 @@ class PCs(commands.Cog):
 
     def __init__(self, bot):
         self.bot = bot
+        # Team to prime time quota mapping
+        self.team_prime_time_quota = {
+            'Valorant White': 2,
+            'Valorant Purple': 1,
+            'Overwatch White': 1,
+            'Overwatch Purple': 1,
+            'League Purple': 1,
+            'Apex White': 1,
+            'Apex Purple': 1,
+        }
+
+    @staticmethod
+    def format_pc(pc: int) -> str:
+        """Format a PC number for display"""
+        return "Streaming" if pc == 0 else f"PC {pc}"
+
+    @staticmethod
+    def ensure_timezone(dt: datetime, assume_utc: bool = True) -> datetime:
+        """Ensure a datetime has timezone info, converting to CST"""
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc if assume_utc else CST_OFFSET)
+        return dt.astimezone(CST_OFFSET)
+
+    async def get_reservations_in_range(self, start_time: datetime, end_time: datetime) -> List[Dict]:
+        """Fetch reservations that overlap with the given time range from database"""
+        sql = """
+            SELECT id, team, pcs, start_time, end_time, manager, is_prime_time
+            FROM reservations
+            WHERE start_time < %s AND end_time > %s
+            ORDER BY start_time
+        """
+        rows = await db.fetch_all(sql, (end_time, start_time))
+        
+        reservations = []
+        for row in rows:
+            reservations.append({
+                'id': row[0],
+                'team': row[1],
+                'pcs': row[2],  
+                'start_time': row[3],
+                'end_time': row[4],
+                'manager': row[5],
+                'is_prime_time': row[6],
+            })
+        return reservations
+
+    async def get_team_prime_time_usage(self, team: str, start_time: datetime) -> int:
+        """Get the number of prime time reservations used by a team this week"""
+        week_start = self.get_week_start(start_time)
+        week_end = week_start + timedelta(days=7)
+        
+        sql = """
+            SELECT COUNT(*)
+            FROM reservations
+            WHERE team = %s
+            AND is_prime_time = TRUE
+            AND start_time >= %s
+            AND start_time < %s
+        """
+        result = await db.fetch_one(sql, (team, week_start, week_end))
+        return result[0] if result else 0
+
+    async def save_reservation(self, team: str, pcs: List[int], start_time: datetime, 
+                               end_time: datetime, manager: str, is_prime_time: bool) -> int:
+        """Save a reservation to the database and return its ID"""
+        sql = """
+            INSERT INTO reservations (team, pcs, start_time, end_time, manager, is_prime_time)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING id
+        """
+        result = await db.fetch_one(sql, (team, pcs, start_time, end_time, manager, is_prime_time))
+        return result[0] if result else None
 
     async def cog_command_error(self, ctx, error):
         """Handle errors for commands in this cog"""
@@ -54,6 +134,214 @@ class PCs(commands.Cog):
         else:
             # Re-raise other errors
             raise error
+
+    def parse_time_range(self, time_str: str) -> Tuple[datetime, datetime]:
+        """Parse time range string like '2025-10-10 7:00PM-9:00PM' into datetime objects (CST)"""
+        # Split date and time range
+        try:
+            date_part, time_range = time_str.strip().split(' ', 1)
+            start_time_str, end_time_str = time_range.split('-')
+            
+            # Parse date
+            year, month, day = map(int, date_part.split('-'))
+            
+            # Parse start time
+            start_time = datetime.strptime(start_time_str.strip(), '%I:%M%p')
+            start_dt = datetime(year, month, day, start_time.hour, start_time.minute, tzinfo=CST_OFFSET)
+            
+            # Parse end time
+            end_time = datetime.strptime(end_time_str.strip(), '%I:%M%p')
+            end_dt = datetime(year, month, day, end_time.hour, end_time.minute, tzinfo=CST_OFFSET)
+            
+            # Handle case where end time is before start time (crosses midnight)
+            if end_dt <= start_dt:
+                end_dt += timedelta(days=1)
+            
+            return start_dt, end_dt
+        except Exception as e:
+            raise ValueError(f"Invalid time format. Expected format: 'YYYY-MM-DD H:MMAM/PM-H:MMAM/PM' (e.g., '2025-10-10 7:00PM-9:00PM')")
+
+    def validate_advance_booking(self, start_time: datetime) -> bool:
+        """Check if reservation is at least 2 days in advance"""
+        now = datetime.now(CST_OFFSET)
+        days_ahead = (start_time.date() - now.date()).days
+        return days_ahead >= ADVANCE_BOOKING_DAYS
+
+    def is_prime_time(self, start_time: datetime, end_time: datetime, pcs: List[int]) -> bool:
+        """
+        Check if reservation qualifies as prime time.
+        Prime time: main room PCs (1-10) after 7PM on Sun-Thu, after 6PM on Fri-Sat
+        """
+        # Only main room PCs count for prime time
+        main_room_pcs = [pc for pc in pcs if pc in MAIN_ROOM_PCS]
+        if not main_room_pcs:
+            return False
+        
+        # Check if any part of the reservation falls in prime time hours
+        weekday = start_time.weekday()  # Monday=0, Sunday=6
+        
+        # Determine prime time start hour
+        if weekday in [4, 5]:  # Friday, Saturday
+            prime_start_hour = PRIME_TIME_WEEKEND_HOUR
+        else:  # Sunday-Thursday
+            prime_start_hour = PRIME_TIME_WEEKDAY_HOUR
+        
+        # Check if the reservation overlaps with prime time
+        prime_start = start_time.replace(hour=prime_start_hour, minute=0, second=0, microsecond=0)
+        
+        # If reservation ends before prime time starts, not prime time
+        if end_time <= prime_start:
+            return False
+        
+        # If reservation starts before prime time but extends into it, or starts during prime time, it's prime time
+        return True
+
+    def get_week_start(self, dt: datetime) -> datetime:
+        """Get the start of the week (Monday 00:00) for a given datetime"""
+        days_since_monday = dt.weekday()
+        week_start = dt.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=days_since_monday)
+        return week_start
+
+    async def check_prime_time_quota(self, team: str, start_time: datetime) -> Tuple[bool, int]:
+        """
+        Check if team has prime time slots available.
+        Returns (has_quota, used_count)
+        """
+        used_count = await self.get_team_prime_time_usage(team, start_time)
+        quota = self.team_prime_time_quota[team]
+        return used_count < quota, used_count
+
+    async def check_conflicts(self, start_time: datetime, end_time: datetime, num_pcs: int) -> Tuple[bool, str, str]:
+        """
+        Check for conflicts with existing reservations.
+        Returns (has_conflict, conflicting_team, conflicting_manager)
+        """
+        # Get all overlapping reservations from database
+        overlapping = await self.get_reservations_in_range(start_time, end_time)
+        
+        # For each time slot in the requested range, check if we can fit the PCs
+        # We need to ensure at most 5 main room PCs are in use at any given time
+        
+        # Create a timeline of all reservation boundaries
+        time_points = set()
+        time_points.add(start_time)
+        time_points.add(end_time)
+        for res in overlapping:
+            time_points.add(res['start_time'])
+            time_points.add(res['end_time'])
+        
+        time_points = sorted(time_points)
+        
+        # Check each interval
+        for i in range(len(time_points) - 1):
+            interval_start = time_points[i]
+            interval_end = time_points[i + 1]
+            
+            # Skip intervals outside our requested range
+            if interval_end <= start_time or interval_start >= end_time:
+                continue
+            
+            # Count how many main room and back room PCs are already reserved in this interval
+            main_room_used = 0
+            back_room_used = 0
+            conflicting_team = None
+            conflicting_manager = None
+            
+            for res in overlapping:
+                if res['start_time'] < interval_end and res['end_time'] > interval_start:
+                    for pc in res['pcs']:
+                        if pc in MAIN_ROOM_PCS:
+                            main_room_used += 1
+                        elif pc in BACK_ROOM_PCS:
+                            back_room_used += 1
+                    if conflicting_team is None:
+                        conflicting_team = res['team']
+                        conflicting_manager = res['manager']
+            
+            # Check if we can fit the requested PCs
+            # We have: back room (14, 15, streaming) = 3 PCs, main room = 10 PCs
+            # Max main room at once = 5
+            
+            # Available back room PCs in this interval
+            back_room_available = len(BACK_ROOM_PCS) - back_room_used
+            
+            # Check Tuesday restriction
+            if interval_start.weekday() == 1:  # Tuesday
+                back_room_available = 0  # No back room on Tuesday
+            
+            # Available main room PCs
+            main_room_available = MAX_MAIN_ROOM_PCS - main_room_used
+            
+            # Can we fit num_pcs?
+            total_available = back_room_available + main_room_available
+            
+            if total_available < num_pcs:
+                return True, conflicting_team, conflicting_manager
+        
+        return False, None, None
+
+    async def allocate_pcs(self, start_time: datetime, end_time: datetime, num_pcs: int) -> List[int]:
+        """
+        Allocate PCs optimally: back room first (14, 15, streaming), then main room (contiguous).
+        Returns list of PC numbers, or empty list if can't allocate.
+        PC numbers: 1-10 (main room), 14, 15 (back room), 0 (streaming, treated as back room)
+        """
+        # Get all overlapping reservations from database
+        overlapping = await self.get_reservations_in_range(start_time, end_time)
+        
+        # Check Tuesday restriction
+        is_tuesday = start_time.weekday() == 1
+        
+        # Determine which PCs are available throughout the entire time range
+        all_pcs = BACK_ROOM_PCS + MAIN_ROOM_PCS  # Back room first, then main room
+        if is_tuesday:
+            all_pcs = MAIN_ROOM_PCS  # No back room on Tuesday
+        
+        available_pcs = []
+        for pc in all_pcs:
+            is_available = True
+            for res in overlapping:
+                if pc in res['pcs']:
+                    is_available = False
+                    break
+            if is_available:
+                available_pcs.append(pc)
+        
+        # Check if we have enough PCs
+        if len(available_pcs) < num_pcs:
+            return []
+        
+        # Allocate PCs with preference for back room, then contiguous main room
+        allocated = []
+        
+        # First, allocate back room PCs (14, 15, 0/streaming)
+        back_room_order = [14, 15, 0]
+        for pc in back_room_order:
+            if pc in available_pcs and len(allocated) < num_pcs:
+                allocated.append(pc)
+        
+        # Then, allocate main room PCs (prefer contiguous: 1-5, then 6-10)
+        if len(allocated) < num_pcs:
+            # Try to allocate from 1-5 first
+            main_room_group1 = [pc for pc in range(1, 6) if pc in available_pcs]
+            main_room_group2 = [pc for pc in range(6, 11) if pc in available_pcs]
+            
+            # Take from group 1 first
+            for pc in main_room_group1:
+                if len(allocated) < num_pcs:
+                    allocated.append(pc)
+            
+            # Then from group 2
+            for pc in main_room_group2:
+                if len(allocated) < num_pcs:
+                    allocated.append(pc)
+        
+        # Verify we don't exceed max main room PCs
+        main_room_allocated = [pc for pc in allocated if pc in MAIN_ROOM_PCS]
+        if len(main_room_allocated) > MAX_MAIN_ROOM_PCS:
+            return []  # Can't allocate
+        
+        return allocated
 
     async def fetch_pcs(self) -> Dict:
         timeout = aiohttp.ClientTimeout(total=10)
@@ -111,8 +399,7 @@ class PCs(commands.Cog):
         currently_reserved = set()
         if reservations:
             THRESHOLD_MINUTES = 30
-            cst_offset = timezone(timedelta(hours=-6))
-            now = datetime.now(cst_offset)
+            now = datetime.now(CST_OFFSET)
             
             for res in reservations:
                 machines = res.get("machines", [])
@@ -124,12 +411,8 @@ class PCs(commands.Cog):
                 # Parse and convert to CST
                 start_utc = datetime.fromisoformat(start_time_str)
                 end_utc = datetime.fromisoformat(end_time_str)
-                if start_utc.tzinfo is None:
-                    start_utc = start_utc.replace(tzinfo=timezone.utc)
-                if end_utc.tzinfo is None:
-                    end_utc = end_utc.replace(tzinfo=timezone.utc)
-                start_cst = start_utc.astimezone(cst_offset)
-                end_cst = end_utc.astimezone(cst_offset)
+                start_cst = PCs.ensure_timezone(start_utc)
+                end_cst = PCs.ensure_timezone(end_utc)
                 
                 # Check if reservation is currently active
                 if start_cst <= now <= end_cst:
@@ -210,8 +493,7 @@ class PCs(commands.Cog):
         # Fetch reservations for upcoming reservation warnings
         try:
             # Get current time in CST (UTC-6)
-            cst_offset = timezone(timedelta(hours=-6))
-            today = datetime.now(cst_offset)
+            today = datetime.now(CST_OFFSET)
             date_str = today.strftime("%Y-%m-%d")
             reservations_data = await self.fetch_reservations(date_str)
             reservations = reservations_data.get("reservations", [])
@@ -263,8 +545,7 @@ class PCs(commands.Cog):
 
         # Fetch reservations to check if PC is currently reserved
         try:
-            cst_offset = timezone(timedelta(hours=-6))
-            today = datetime.now(cst_offset)
+            today = datetime.now(CST_OFFSET)
             date_str = today.strftime("%Y-%m-%d")
             reservations_data = await self.fetch_reservations(date_str)
             reservations = reservations_data.get("reservations", [])
@@ -301,7 +582,7 @@ class PCs(commands.Cog):
 
         # Check if PC is currently in a reserved block
         currently_reserved = False
-        now = datetime.now(cst_offset)
+        now = datetime.now(CST_OFFSET)
         for res in reservations:
             machines = res.get("machines", [])
             if name not in machines:
@@ -313,12 +594,8 @@ class PCs(commands.Cog):
             
             start_utc = datetime.fromisoformat(start_time_str)
             end_utc = datetime.fromisoformat(end_time_str)
-            if start_utc.tzinfo is None:
-                start_utc = start_utc.replace(tzinfo=timezone.utc)
-            if end_utc.tzinfo is None:
-                end_utc = end_utc.replace(tzinfo=timezone.utc)
-            start_cst = start_utc.astimezone(cst_offset)
-            end_cst = end_utc.astimezone(cst_offset)
+            start_cst = PCs.ensure_timezone(start_utc)
+            end_cst = PCs.ensure_timezone(end_utc)
             
             if start_cst <= now <= end_cst:
                 currently_reserved = True
@@ -346,7 +623,6 @@ class PCs(commands.Cog):
         await ctx.followup.send(embed=embed)
 
     @commands.slash_command(name="reservations", description="Show PC reservations for a date", guild_ids=[GUILD_ID])
-    @commands.cooldown(1, 300, commands.BucketType.user)  
     async def reservations(
         self,
         ctx,
@@ -355,7 +631,6 @@ class PCs(commands.Cog):
         await ctx.defer()
         
         # Parse or default to today (in CST)
-        cst_offset = timezone(timedelta(hours=-6))
         if date:
             try:
                 target_date = datetime.strptime(date, "%Y-%m-%d")
@@ -363,7 +638,7 @@ class PCs(commands.Cog):
                 await ctx.followup.send("Invalid date format. Please use YYYY-MM-DD (e.g., 2025-09-30)", ephemeral=True)
                 return
         else:
-            target_date = datetime.now(cst_offset)
+            target_date = datetime.now(CST_OFFSET)
         
         date_str = target_date.strftime("%Y-%m-%d")
         
@@ -400,19 +675,136 @@ class PCs(commands.Cog):
                 resp.raise_for_status()
                 return await resp.json()
 
+    @commands.slash_command(name="reserve", description="Reserve PCs for your team", guild_ids=[GUILD_ID])
+    async def reserve(
+        self,
+        ctx,
+        team: discord.Option(
+            str, 
+            name="team", 
+            description="Your team", 
+            choices=[
+                "Valorant White", 
+                "Valorant Purple", 
+                "Overwatch White", 
+                "Overwatch Purple", 
+                "League Purple", 
+                "Apex White", 
+                "Apex Purple"
+            ], 
+            required=True
+        ),
+        num_pcs: discord.Option(int, name="num_pcs", description="Number of PCs to reserve (1-10)", min_value=1, max_value=10, required=True),
+    ):
+        # Check if user has required role
+        allowed_role_ids = config.config["reservations"]["roles"]
+        user_role_ids = [role.id for role in ctx.author.roles]
+        
+        if not any(role_id in allowed_role_ids for role_id in user_role_ids):
+            await ctx.respond(
+                "❌ You don't have permission to reserve PCs. Contact a team manager.",
+                ephemeral=True
+            )
+            return
+        
+        # Show modal for time input
+        modal = ReservationTimeModal(self, team, num_pcs)
+        await ctx.send_modal(modal)
+
+    @commands.slash_command(name="show_team_reservations", description="Show all team reservations for a specific date", guild_ids=[GUILD_ID])
+    async def show_team_reservations(
+        self,
+        ctx,
+        date: discord.Option(str, name="date", description="Date in YYYY-MM-DD format (default: today)", required=False)
+    ):
+        # Check if user has required role
+        allowed_role_ids = config.config["reservations"]["roles"]
+        user_role_ids = [role.id for role in ctx.author.roles]
+        
+        if not any(role_id in allowed_role_ids for role_id in user_role_ids):
+            await ctx.respond(
+                "❌ You don't have permission to view team reservations. Contact a team manager.",
+                ephemeral=True
+            )
+            return
+        
+        await ctx.defer()
+        
+        # Parse or default to today (in CST)
+        if date:
+            try:
+                target_date = datetime.strptime(date, "%Y-%m-%d")
+                target_date = target_date.replace(tzinfo=CST_OFFSET)
+            except ValueError:
+                await ctx.followup.send("Invalid date format. Please use YYYY-MM-DD (e.g., 2025-10-10)", ephemeral=True)
+                return
+        else:
+            target_date = datetime.now(CST_OFFSET)
+        
+        # Get start and end of the day
+        start_of_day = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_of_day = target_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+        
+        # Query database for reservations on this date
+        reservations = await self.get_reservations_in_range(start_of_day, end_of_day)
+        
+        if not reservations:
+            embed = discord.Embed(
+                title=f"Team Reservations for {target_date.strftime('%A, %B %d, %Y')}",
+                description="No reservations found for this date.",
+                color=discord.Color.from_rgb(78, 42, 132),
+            )
+            await ctx.followup.send(embed=embed)
+            return
+        
+        # Build embed with reservation details
+        embed = discord.Embed(
+            title=f"Team Reservations for {target_date.strftime('%A, %B %d, %Y')}",
+            color=discord.Color.from_rgb(78, 42, 132),
+        )
+        
+        # Sort reservations by start time
+        reservations.sort(key=lambda r: r['start_time'])
+        
+        for idx, res in enumerate(reservations, 1):
+            # Format PC list
+            pc_list = ", ".join(PCs.format_pc(pc) for pc in sorted(res['pcs'], key=lambda x: (x == 0, x)))
+            
+            # Format times (convert to CST if needed)
+            start_cst = PCs.ensure_timezone(res['start_time'])
+            end_cst = PCs.ensure_timezone(res['end_time'])
+            
+            # Build field value
+            time_str = f"{start_cst.strftime('%I:%M %p')} - {end_cst.strftime('%I:%M %p')} CST"
+            prime_indicator = " ✨" if res['is_prime_time'] else ""
+            
+            field_value = (
+                f"**Team:** {res['team']}\n"
+                f"**PCs:** {pc_list}\n"
+                f"**Time:** {time_str}{prime_indicator}\n"
+                f"**Manager:** {res['manager']}"
+            )
+            
+            embed.add_field(
+                name=f"Reservation #{idx}",
+                value=field_value,
+                inline=False
+            )
+        
+        embed.set_footer(text="✨ = Prime Time Reservation")
+        await ctx.followup.send(embed=embed)
+
     @staticmethod
     def build_reservation_image(reservations: List[Dict], target_date: datetime, start_hour: int, end_hour: int, end_minute: int = 0) -> io.BytesIO:
         """Build a 2D grid image with time slots (x-axis) and desks (y-axis)"""
-        # CST is UTC-6
-        cst_offset = timezone(timedelta(hours=-6))
         
         # Define desks to show: 1-10, 14, 15, and Streaming
         all_desks = [f"Desk {i:03d}" for i in range(1, 11)] + ["Desk 014", "Desk 015", "Desk 000 - Streaming"]
         
         # Build time slots from start_hour to end_hour:end_minute in 30-minute increments
         time_slots = []
-        base_date = target_date.replace(hour=start_hour, minute=0, second=0, microsecond=0, tzinfo=cst_offset)
-        end_time = target_date.replace(hour=end_hour, minute=end_minute, second=0, microsecond=0, tzinfo=cst_offset)
+        base_date = target_date.replace(hour=start_hour, minute=0, second=0, microsecond=0, tzinfo=CST_OFFSET)
+        end_time = target_date.replace(hour=end_hour, minute=end_minute, second=0, microsecond=0, tzinfo=CST_OFFSET)
         
         current_time = base_date
         while current_time <= end_time:
@@ -429,16 +821,8 @@ class PCs(commands.Cog):
             # Parse times and convert to CST
             start_utc = datetime.fromisoformat(res.get("start_time"))
             end_utc = datetime.fromisoformat(res.get("end_time"))
-            
-            # If times are naive, assume UTC
-            if start_utc.tzinfo is None:
-                start_utc = start_utc.replace(tzinfo=timezone.utc)
-            if end_utc.tzinfo is None:
-                end_utc = end_utc.replace(tzinfo=timezone.utc)
-            
-            # Convert to CST
-            start_cst = start_utc.astimezone(cst_offset)
-            end_cst = end_utc.astimezone(cst_offset)
+            start_cst = PCs.ensure_timezone(start_utc)
+            end_cst = PCs.ensure_timezone(end_utc)
             
             # Mark time slots as reserved for each machine
             for machine in machines:
@@ -517,6 +901,148 @@ class PCs(commands.Cog):
         img.save(buffer, format='PNG')
         buffer.seek(0)
         return buffer
+
+
+class ReservationTimeModal(discord.ui.Modal):
+    def __init__(self, cog: 'PCs', team: str, num_pcs: int):
+        super().__init__(title="Reserve PCs - Set Time")
+        self.cog = cog
+        self.team = team
+        self.num_pcs = num_pcs
+        
+        self.add_item(discord.ui.InputText(
+            label="Date",
+            placeholder="YYYY-MM-DD (e.g., 2025-10-15)",
+            style=discord.InputTextStyle.short,
+            required=True,
+        ))
+        
+        self.add_item(discord.ui.InputText(
+            label="Start Time",
+            placeholder="H:MMAM/PM (e.g., 7:00PM)",
+            style=discord.InputTextStyle.short,
+            required=True,
+        ))
+        
+        self.add_item(discord.ui.InputText(
+            label="End Time",
+            placeholder="H:MMAM/PM (e.g., 9:00PM)",
+            style=discord.InputTextStyle.short,
+            required=True,
+        ))
+    
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        
+        # Get values from modal
+        date_str = self.children[0].value.strip()
+        start_time_str = self.children[1].value.strip()
+        end_time_str = self.children[2].value.strip()
+        
+        # Combine into the format expected by parse_time_range
+        times = f"{date_str} {start_time_str}-{end_time_str}"
+        
+        # Parse time range
+        try:
+            start_time, end_time = self.cog.parse_time_range(times)
+        except ValueError as e:
+            await interaction.followup.send(f"❌ {str(e)}", ephemeral=True)
+            return
+        
+        # Validate advance booking (at least 2 days)
+        if not self.cog.validate_advance_booking(start_time):
+            await interaction.followup.send(
+                "❌ Reservations must be made at least 2 days in advance. Please choose a date at least 2 days from today.",
+                ephemeral=True
+            )
+            return
+        
+        # Check conflicts first
+        has_conflict, conflicting_team, conflicting_manager = await self.cog.check_conflicts(start_time, end_time, self.num_pcs)
+        if has_conflict:
+            await interaction.followup.send(
+                f"❌ Conflict with team **{conflicting_team}**. Please contact **{conflicting_manager}** to resolve.",
+                ephemeral=True
+            )
+            return
+        
+        # Allocate PCs
+        allocated_pcs = await self.cog.allocate_pcs(start_time, end_time, self.num_pcs)
+        if not allocated_pcs:
+            await interaction.followup.send(
+                f"❌ Unable to allocate {self.num_pcs} PCs for the requested time slot. Please try a different time or fewer PCs.",
+                ephemeral=True
+            )
+            return
+        
+        # Check if this is a prime time reservation
+        is_prime = self.cog.is_prime_time(start_time, end_time, allocated_pcs)
+        
+        # If prime time, check quota
+        if is_prime:
+            has_quota, used_count = await self.cog.check_prime_time_quota(self.team, start_time)
+            quota = self.cog.team_prime_time_quota[self.team]
+            if not has_quota:
+                await interaction.followup.send(
+                    f"❌ **{self.team}** has already used all {quota} prime time reservation(s) this week ({used_count}/{quota} used).\n"
+                    f"Prime time resets every Monday at 12:00 AM CST.",
+                    ephemeral=True
+                )
+                return
+        
+        # Save reservation to database
+        manager = f"{interaction.user.name}#{interaction.user.discriminator}" if interaction.user.discriminator != "0" else interaction.user.name
+        await self.cog.save_reservation(self.team, allocated_pcs, start_time, end_time, manager, is_prime)
+        
+        # Format PC list for display
+        pc_list = ", ".join(PCs.format_pc(pc) for pc in sorted(allocated_pcs, key=lambda x: (x == 0, x)))
+        
+        # Send confirmation to user
+        prime_time_status = "✨ **Prime Time Reservation**" if is_prime else ""
+        await interaction.followup.send(
+            f"✅ Reservation confirmed!\n\n"
+            f"**Team:** {self.team}\n"
+            f"**PCs:** {pc_list}\n"
+            f"**Time:** {start_time.strftime('%A, %B %d, %Y %I:%M %p')} - {end_time.strftime('%I:%M %p')} CST\n"
+            f"**Manager:** {manager}\n"
+            f"{prime_time_status}",
+            ephemeral=True
+        )
+        
+        # Send notification to nexus-reservations channel
+        try:
+            # Get the reservations channel from config
+            channel_id = config.config["reservations"]["channel"]
+            reservations_channel = self.cog.bot.get_channel(channel_id)
+            
+            if reservations_channel:
+                # Determine room type
+                back_room_pcs = [pc for pc in allocated_pcs if pc in BACK_ROOM_PCS]
+                main_room_pcs = [pc for pc in allocated_pcs if pc in MAIN_ROOM_PCS]
+                
+                room_info = []
+                if back_room_pcs:
+                    room_info.append(f"Back Room: {', '.join(PCs.format_pc(pc) for pc in sorted(back_room_pcs))}")
+                if main_room_pcs:
+                    room_info.append(f"Main Room: {', '.join(PCs.format_pc(pc) for pc in sorted(main_room_pcs))}")
+                
+                embed = discord.Embed(
+                    title="🎮 New PC Reservation",
+                    color=discord.Color.from_rgb(78, 42, 132),
+                    timestamp=datetime.now(timezone.utc)
+                )
+                embed.add_field(name="Team", value=self.team, inline=True)
+                embed.add_field(name="Manager", value=manager, inline=True)
+                embed.add_field(name="Date", value=start_time.strftime('%A, %B %d, %Y'), inline=False)
+                embed.add_field(name="Time", value=f"{start_time.strftime('%I:%M %p')} - {end_time.strftime('%I:%M %p')} CST", inline=True)
+                embed.add_field(name="PCs", value="\n".join(room_info), inline=False)
+                
+                if is_prime:
+                    embed.add_field(name="Status", value="✨ Prime Time Reservation", inline=False)
+                
+                await reservations_channel.send(embed=embed)
+        except Exception as e:
+            print(f"Failed to send notification to nexus-reservations: {e}")
 
 
 class ReservationView(discord.ui.View):

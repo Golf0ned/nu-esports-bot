@@ -139,3 +139,10 @@ valorant:
 apis:
   ggleap: # link here
 
+reservations:
+  channel: #<channel_id>
+  # who can invoke the reserve command
+  roles:
+    - #<role_id>
+    - #<role_id>
+    # - ...

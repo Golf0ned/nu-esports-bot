@@ -19,6 +19,7 @@ cogs_list = [
     "teams",
     "valorant",
     "pcs",
+    "game",
 ]
 
 for cog in cogs_list:

@@ -694,7 +694,7 @@ class PCs(commands.Cog):
             ], 
             required=True
         ),
-        num_pcs: discord.Option(int, name="num_pcs", description="Number of PCs to reserve (1-10)", min_value=1, max_value=10, required=True),
+        num_pcs: discord.Option(int, name="num_pcs", description="Number of PCs to reserve (1-5)", min_value=1, max_value=10, required=True),
     ):
         # Check if user has required role
         allowed_role_ids = config.config["reservations"]["roles"]

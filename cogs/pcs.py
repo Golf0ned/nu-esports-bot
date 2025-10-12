@@ -133,7 +133,7 @@ class PCs(commands.Cog):
             )
         else:
             # Re-raise other errors
-            raise error
+            raise error 
 
     def parse_time_range(self, time_str: str) -> Tuple[datetime, datetime]:
         """Parse time range string like '2025-10-10 7:00PM-9:00PM' into datetime objects (CST)"""
@@ -197,6 +197,22 @@ class PCs(commands.Cog):
         days_since_monday = dt.weekday()
         week_start = dt.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=days_since_monday)
         return week_start
+    
+    def is_within_open_hours(self, start_time: datetime, end_time: datetime) -> bool: 
+        """"Check that reservation is within Gameroom hours (ignoring adjusted hours for now)"""
+        # Get day of week and pull correct hours
+        day_of_week = start_time.weekday()
+        hours = config.config["gameroom"]["default_hours"][day_of_week] 
+        
+        # Convert to proper format to use parse_time_range 
+        hours_str = start_time.strftime("%Y-%m-%d") + " " + hours.replace(" ", "")
+        gr_start_time, gr_end_time = self.parse_time_range(hours_str)
+
+        # Compare datetimes
+        if gr_start_time <= start_time <= gr_end_time and gr_start_time <= end_time <= gr_end_time:
+            return True
+        else:
+            return False
 
     async def check_prime_time_quota(self, team: str, start_time: datetime) -> Tuple[bool, int]:
         """
@@ -946,8 +962,6 @@ class ReservationTimeModal(discord.ui.Modal):
             return
         
         # Ensure end time is after start time
-        print(f"start time {start_time}")
-        print(f"end time {end_time}")
         if start_time > end_time: 
             await interaction.followup.send(
                 "❌ Requested reservation start time is after the requested end time.",

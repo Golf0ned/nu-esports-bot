@@ -1010,7 +1010,6 @@ class ReservationTimeModal(discord.ui.Modal):
         is_over_2_hours = False
         if end_time > start_time + timedelta(hours=2):
             is_over_2_hours = True
-        
 
         # If prime time, check quota
         if is_prime:

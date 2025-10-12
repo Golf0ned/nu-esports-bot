@@ -11,13 +11,16 @@ GUILD_ID = config.secrets["discord"]["guild_id"]
 
 
 class Valorant(commands.Cog):
-
     def __init__(self, bot):
         self.bot = bot
-       
+
     valorant = discord.SlashCommandGroup("valorant", "Valorant-related utils")
 
-    @valorant.command(name="random-lobby", description="Generates a randomized Valorant lobby", guild_ids=[GUILD_ID])
+    @valorant.command(
+        name="random-lobby",
+        description="Generates a randomized Valorant lobby",
+        guild_ids=[GUILD_ID],
+    )
     async def random_lobby(
         self,
         ctx,
@@ -46,8 +49,12 @@ class Valorant(commands.Cog):
         )
 
         embed.add_field(name=":map: Map", value=map, inline=False)
-        embed.add_field(name=":red_square: Attackers", value="\n".join(attackers), inline=True)
-        embed.add_field(name=":blue_square: Defenders", value="\n".join(defenders), inline=True)
+        embed.add_field(
+            name=":red_square: Attackers", value="\n".join(attackers), inline=True
+        )
+        embed.add_field(
+            name=":blue_square: Defenders", value="\n".join(defenders), inline=True
+        )
 
         await ctx.respond("", embed=embed)
 
@@ -71,12 +78,17 @@ def random_map(flags):
 
 def random_team(flags):
     agents = config.config["valorant"]["agents"]
-    agents_roles = copy.deepcopy(config.config["valorant"]["agents_roles"]) # copy because pop
+    agents_roles = copy.deepcopy(
+        config.config["valorant"]["agents_roles"]
+    )  # copy because pop
 
     match flags:
         case "role-balanced":
             # pop random agent from each role
-            team = [agents[role.pop(random.randrange(len(role)))] for role in agents_roles.values()]
+            team = [
+                agents[role.pop(random.randrange(len(role)))]
+                for role in agents_roles.values()
+            ]
 
             # fill in remaining agent
             remaining_agents = [i for role in agents_roles.values() for i in role]
@@ -88,4 +100,3 @@ def random_team(flags):
 
         case _:
             return random.sample(agents, 5)
-

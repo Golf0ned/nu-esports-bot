@@ -7,10 +7,12 @@ TOKEN = config.secrets["discord"]["token"]
 
 bot = discord.Bot(intents=discord.Intents.all())
 
+
 @bot.event
 async def on_ready():
     await db.open_pool()
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
+
 
 cogs_list = [
     "fun",
@@ -27,4 +29,3 @@ for cog in cogs_list:
     print(f"Loaded cog: {cog}")
 
 bot.run(TOKEN)
-

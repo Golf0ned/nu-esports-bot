@@ -8,7 +8,6 @@ GUILD_ID = config.secrets["discord"]["guild_id"]
 
 
 class Teams(commands.Cog):
-
     def __init__(self, bot):
         self.bot = bot
 

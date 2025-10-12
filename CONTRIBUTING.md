@@ -24,18 +24,22 @@ After following the steps, you should have a local instance of the bot that you 
 
 ## Making Changes
 
+The Pycord documentation can be found [here](https://docs.pycord.dev/en/v2.6.1/).
+
+This project uses [Ruff](https://docs.astral.sh/ruff/) for formatting and linting. Install it and use it. Code that doesn't pass checks won't get merged!
+
 After making changes, you'll need to rebuild the Docker image when running. When testing your changes, it may be helpful to run:
 
 ```bash
 docker compose up --build
 ```
 
-There is no formal testing framework as of writing this guide. However, make sure your code works locally! We don't want Miku to crash and go on strike.
+There is no formal testing framework as of writing this guide. However, make sure your code works locally! We don't want Miku to crash.
 
 ## Submitting a Patch
 
-Create a pull request on GitHub. Try to make the name and description reasonably descriptive of what was changed.
+Create a pull request (PR) on GitHub. Try to make the name and description reasonably descriptive of what was changed.
 
-(TODO: formatting/linting? ben pls)
+After submitting a PR, a maintainer will review the patch. They will either request changes (which should be resolved in some fashion before approval), or if it all looks good, approve and merge the PR.
 
-After submitting a pull request, a maintainer will review the patch. They will either request changes (which should be resolved in some fashion before approval), or if it all looks good, approve and merge the pull request.
+As previously mentioned, your PR must pass all checks to be approved and merged.

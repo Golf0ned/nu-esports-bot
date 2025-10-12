@@ -1,6 +1,3 @@
-import copy
-import random
-
 import discord
 from discord.ext import commands
 
@@ -11,7 +8,6 @@ GUILD_ID = config.secrets["discord"]["guild_id"]
 
 
 class Game(commands.Cog):
-
     def __init__(self, bot):
         self.bot = bot
 
@@ -32,7 +28,7 @@ class Game(commands.Cog):
             name="size",
             description="Number of stackas (default 5)",
             default=5,
-        )
+        ),
     ):
         # We don't need 1 or less people in a stack
         if size < 2:
@@ -49,11 +45,14 @@ class Game(commands.Cog):
             title=name,
             color=discord.Color.from_rgb(78, 42, 132),
         )
-        embed.add_field(name="".join([":white_medium_square:" for _ in range(size)]), value="empty :/")
+        embed.add_field(
+            name="".join([":white_medium_square:" for _ in range(size)]),
+            value="empty :/",
+        )
         await ctx.respond(embed=embed, view=GameStackView(embed, size))
 
-class GameStackView(discord.ui.View):
 
+class GameStackView(discord.ui.View):
     def __init__(self, embed, size):
         super().__init__(timeout=1200)
         self.embed = embed
@@ -67,12 +66,23 @@ class GameStackView(discord.ui.View):
         # - Yellow square: Person joined over stack size
         # - White square: Empty slot
         num_joined = len(self.joined)
-        name = "".join([":green_square:" if i < self.stack_size else ":yellow_square:" for i in range(num_joined)])
+        name = "".join(
+            [
+                ":green_square:" if i < self.stack_size else ":yellow_square:"
+                for i in range(num_joined)
+            ]
+        )
         if num_joined < self.stack_size:
-            name += "".join([":white_medium_square:" for _ in range(self.stack_size - num_joined)])
+            name += "".join(
+                [":white_medium_square:" for _ in range(self.stack_size - num_joined)]
+            )
 
         # Value: display name of every user
-        value = "\n".join(user.mention for user in self.joined.values()) if self.joined else "empty :/"
+        value = (
+            "\n".join(user.mention for user in self.joined.values())
+            if self.joined
+            else "empty :/"
+        )
 
         self.embed.remove_field(0)
         self.embed.add_field(name=name, value=value)
@@ -89,7 +99,9 @@ class GameStackView(discord.ui.View):
 
         if not self.pinged and len(self.joined) >= self.stack_size:
             self.pinged = True
-            await interaction.followup.send(" ".join(user.mention for user in self.joined.values()))
+            await interaction.followup.send(
+                " ".join(user.mention for user in self.joined.values())
+            )
 
     @discord.ui.button(label="Leave", style=discord.ButtonStyle.red)
     async def leave_callback(self, button, interaction):
@@ -100,7 +112,7 @@ class GameStackView(discord.ui.View):
 
     @discord.ui.button(label="Bump!", style=discord.ButtonStyle.grey)
     async def refresh_callback(self, button, interaction):
-        # TODO: fix issue with race condition spamming console and nuking the stack altogether
+        # TODO: fix issue with race condition
         await self.message.delete()
         await interaction.response.send_message(embed=self.embed, view=self)
 

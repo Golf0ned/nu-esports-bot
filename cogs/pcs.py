@@ -153,13 +153,9 @@ class PCs(commands.Cog):
             end_time = datetime.strptime(end_time_str.strip(), '%I:%M%p')
             end_dt = datetime(year, month, day, end_time.hour, end_time.minute, tzinfo=CST_OFFSET)
             
-            # Handle case where end time is before start time (crosses midnight)
-            if end_dt <= start_dt:
-                end_dt += timedelta(days=1)
-            
             return start_dt, end_dt
-        except Exception as e:
-            raise ValueError(f"Invalid time format. Expected format: 'YYYY-MM-DD H:MMAM/PM-H:MMAM/PM' (e.g., '2025-10-10 7:00PM-9:00PM')")
+        except Exception:
+            raise ValueError("Invalid time format. Expected format: 'YYYY-MM-DD H:MMAM/PM-H:MMAM/PM' (e.g., '2025-10-10 7:00PM-9:00PM')") 
 
     def validate_advance_booking(self, start_time: datetime) -> bool:
         """Check if reservation is at least 2 days in advance"""
@@ -201,6 +197,19 @@ class PCs(commands.Cog):
         days_since_monday = dt.weekday()
         week_start = dt.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=days_since_monday)
         return week_start
+    
+    def is_within_open_hours(self, start_time: datetime, end_time: datetime) -> bool: 
+        """"Check that reservation is within Gameroom hours (ignoring adjusted hours for now)"""
+        # Get day of week and pull correct hours
+        day_of_week = start_time.weekday()
+        hours = config.config["gameroom"]["default_hours"][day_of_week] 
+        
+        # Convert to proper format to use parse_time_range 
+        hours_str = start_time.strftime("%Y-%m-%d") + " " + hours.replace(" ", "")
+        gr_start_time, gr_end_time = self.parse_time_range(hours_str)
+
+        # Compare datetimes
+        return gr_start_time <= start_time <= gr_end_time and gr_start_time <= end_time <= gr_end_time
 
     async def check_prime_time_quota(self, team: str, start_time: datetime) -> Tuple[bool, int]:
         """
@@ -539,7 +548,7 @@ class PCs(commands.Cog):
         await ctx.defer()
         try:
             data = await self.fetch_pcs()
-        except Exception as e:
+        except Exception:
             await ctx.followup.send("Failed to fetch PC data. Please try again later.", ephemeral=True)
             return
 
@@ -694,7 +703,17 @@ class PCs(commands.Cog):
             ], 
             required=True
         ),
-        num_pcs: discord.Option(int, name="num_pcs", description="Number of PCs to reserve (1-10)", min_value=1, max_value=10, required=True),
+        num_pcs: discord.Option(int, name="num_pcs", description="Number of PCs to reserve (1-8)", min_value=1, max_value=8, required=True),
+        res_type: discord.Option(
+            str, 
+            name="type", 
+            description="Scrim or match", 
+            choices=[
+                "Scrim", 
+                "Match"
+            ], 
+            required=True
+        ),
     ):
         # Check if user has required role
         allowed_role_ids = config.config["reservations"]["roles"]
@@ -708,7 +727,7 @@ class PCs(commands.Cog):
             return
         
         # Show modal for time input
-        modal = ReservationTimeModal(self, team, num_pcs)
+        modal = ReservationTimeModal(self, team, num_pcs, res_type)
         await ctx.send_modal(modal)
 
     @commands.slash_command(name="show_team_reservations", description="Show all team reservations for a specific date", guild_ids=[GUILD_ID])
@@ -858,7 +877,7 @@ class PCs(commands.Cog):
         try:
             font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 14)
             small_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 12)
-        except:
+        except Exception: 
             font = ImageFont.load_default()
             small_font = ImageFont.load_default()
         
@@ -904,11 +923,12 @@ class PCs(commands.Cog):
 
 
 class ReservationTimeModal(discord.ui.Modal):
-    def __init__(self, cog: 'PCs', team: str, num_pcs: int):
+    def __init__(self, cog: 'PCs', team: str, num_pcs: int, res_type: str):
         super().__init__(title="Reserve PCs - Set Time")
         self.cog = cog
         self.team = team
         self.num_pcs = num_pcs
+        self.res_type = res_type
         
         self.add_item(discord.ui.InputText(
             label="Date",
@@ -949,6 +969,22 @@ class ReservationTimeModal(discord.ui.Modal):
             await interaction.followup.send(f"❌ {str(e)}", ephemeral=True)
             return
         
+        # Ensure end time is after start time
+        if start_time > end_time: 
+            await interaction.followup.send(
+                "❌ Requested reservation start time is after the requested end time.",
+                ephemeral=True
+            )
+            return
+        
+        # Ensure reservation is within Gameroom hours
+        if not self.cog.is_within_open_hours(start_time, end_time):
+            await interaction.followup.send(
+                "❌ Requested reservation is not within Gameroom hours.",
+                ephemeral=True
+            )
+            return
+        
         # Validate advance booking (at least 2 days)
         if not self.cog.validate_advance_booking(start_time):
             await interaction.followup.send(
@@ -965,7 +1001,7 @@ class ReservationTimeModal(discord.ui.Modal):
                 ephemeral=True
             )
             return
-        
+
         # Allocate PCs
         allocated_pcs = await self.cog.allocate_pcs(start_time, end_time, self.num_pcs)
         if not allocated_pcs:
@@ -977,7 +1013,12 @@ class ReservationTimeModal(discord.ui.Modal):
         
         # Check if this is a prime time reservation
         is_prime = self.cog.is_prime_time(start_time, end_time, allocated_pcs)
-        
+
+        # Check if reservation is longer than 2 hours
+        is_over_2_hours = False
+        if end_time > start_time + timedelta(hours=2):
+            is_over_2_hours = True
+
         # If prime time, check quota
         if is_prime:
             has_quota, used_count = await self.cog.check_prime_time_quota(self.team, start_time)
@@ -1035,10 +1076,14 @@ class ReservationTimeModal(discord.ui.Modal):
                 embed.add_field(name="Manager", value=manager, inline=True)
                 embed.add_field(name="Date", value=start_time.strftime('%A, %B %d, %Y'), inline=False)
                 embed.add_field(name="Time", value=f"{start_time.strftime('%I:%M %p')} - {end_time.strftime('%I:%M %p')} CST", inline=True)
+                embed.add_field(name="Res Type", value=self.res_type, inline=False)
                 embed.add_field(name="PCs", value="\n".join(room_info), inline=False)
                 
                 if is_prime:
                     embed.add_field(name="Status", value="✨ Prime Time Reservation", inline=False)
+
+                if is_prime and is_over_2_hours:
+                    embed.add_field(name="Notes", value="‼️ Prime Time Reservation longer than 2 Hours", inline=False)
                 
                 await reservations_channel.send(embed=embed)
         except Exception as e:

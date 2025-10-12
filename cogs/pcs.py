@@ -154,8 +154,8 @@ class PCs(commands.Cog):
             end_dt = datetime(year, month, day, end_time.hour, end_time.minute, tzinfo=CST_OFFSET)
             
             return start_dt, end_dt
-        except Exception as e:
-            raise ValueError(f"Invalid time format. Expected format: 'YYYY-MM-DD H:MMAM/PM-H:MMAM/PM' (e.g., '2025-10-10 7:00PM-9:00PM')")
+        except Exception:
+            raise ValueError("Invalid time format. Expected format: 'YYYY-MM-DD H:MMAM/PM-H:MMAM/PM' (e.g., '2025-10-10 7:00PM-9:00PM')") 
 
     def validate_advance_booking(self, start_time: datetime) -> bool:
         """Check if reservation is at least 2 days in advance"""
@@ -551,7 +551,7 @@ class PCs(commands.Cog):
         await ctx.defer()
         try:
             data = await self.fetch_pcs()
-        except Exception as e:
+        except Exception:
             await ctx.followup.send("Failed to fetch PC data. Please try again later.", ephemeral=True)
             return
 
@@ -870,7 +870,7 @@ class PCs(commands.Cog):
         try:
             font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 14)
             small_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 12)
-        except:
+        except Exception: 
             font = ImageFont.load_default()
             small_font = ImageFont.load_default()
         

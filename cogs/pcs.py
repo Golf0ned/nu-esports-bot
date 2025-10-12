@@ -153,10 +153,6 @@ class PCs(commands.Cog):
             end_time = datetime.strptime(end_time_str.strip(), '%I:%M%p')
             end_dt = datetime(year, month, day, end_time.hour, end_time.minute, tzinfo=CST_OFFSET)
             
-            # Handle case where end time is before start time (crosses midnight)
-            if end_dt <= start_dt:
-                end_dt += timedelta(days=1)
-            
             return start_dt, end_dt
         except Exception as e:
             raise ValueError(f"Invalid time format. Expected format: 'YYYY-MM-DD H:MMAM/PM-H:MMAM/PM' (e.g., '2025-10-10 7:00PM-9:00PM')")
@@ -694,10 +690,10 @@ class PCs(commands.Cog):
             ], 
             required=True
         ),
-        num_pcs: discord.Option(int, name="num_pcs", description="Number of PCs to reserve (1-5)", min_value=1, max_value=10, required=True),
+        num_pcs: discord.Option(int, name="num_pcs", description="Number of PCs to reserve (1-8)", min_value=1, max_value=10, required=True),
     ):
         # Check if user has required role
-        allowed_role_ids = config.config["reservations"]["roles"]
+        """allowed_role_ids = config.config["reservations"]["roles"]
         user_role_ids = [role.id for role in ctx.author.roles]
         
         if not any(role_id in allowed_role_ids for role_id in user_role_ids):
@@ -705,7 +701,7 @@ class PCs(commands.Cog):
                 "❌ You don't have permission to reserve PCs. Contact a team manager.",
                 ephemeral=True
             )
-            return
+            return"""
         
         # Show modal for time input
         modal = ReservationTimeModal(self, team, num_pcs)
@@ -947,6 +943,16 @@ class ReservationTimeModal(discord.ui.Modal):
             start_time, end_time = self.cog.parse_time_range(times)
         except ValueError as e:
             await interaction.followup.send(f"❌ {str(e)}", ephemeral=True)
+            return
+        
+        # Ensure end time is after start time
+        print(f"start time {start_time}")
+        print(f"end time {end_time}")
+        if start_time > end_time: 
+            await interaction.followup.send(
+                "❌ Requested reservation start time is after the requested end time.",
+                ephemeral=True
+            )
             return
         
         # Validate advance booking (at least 2 days)

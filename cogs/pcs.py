@@ -133,7 +133,7 @@ class PCs(commands.Cog):
             )
         else:
             # Re-raise other errors
-            raise error 
+            raise error
 
     def parse_time_range(self, time_str: str) -> Tuple[datetime, datetime]:
         """Parse time range string like '2025-10-10 7:00PM-9:00PM' into datetime objects (CST)"""
@@ -709,7 +709,7 @@ class PCs(commands.Cog):
         num_pcs: discord.Option(int, name="num_pcs", description="Number of PCs to reserve (1-8)", min_value=1, max_value=10, required=True),
     ):
         # Check if user has required role
-        """allowed_role_ids = config.config["reservations"]["roles"]
+        allowed_role_ids = config.config["reservations"]["roles"]
         user_role_ids = [role.id for role in ctx.author.roles]
         
         if not any(role_id in allowed_role_ids for role_id in user_role_ids):
@@ -717,7 +717,7 @@ class PCs(commands.Cog):
                 "❌ You don't have permission to reserve PCs. Contact a team manager.",
                 ephemeral=True
             )
-            return"""
+            return
         
         # Show modal for time input
         modal = ReservationTimeModal(self, team, num_pcs)
@@ -993,7 +993,7 @@ class ReservationTimeModal(discord.ui.Modal):
                 ephemeral=True
             )
             return
-        
+
         # Allocate PCs
         allocated_pcs = await self.cog.allocate_pcs(start_time, end_time, self.num_pcs)
         if not allocated_pcs:
@@ -1005,7 +1005,13 @@ class ReservationTimeModal(discord.ui.Modal):
         
         # Check if this is a prime time reservation
         is_prime = self.cog.is_prime_time(start_time, end_time, allocated_pcs)
+
+        # Check if reservation is longer than 2 hours
+        is_over_2_hours = False
+        if end_time > start_time + timedelta(hours=2):
+            is_over_2_hours = True
         
+
         # If prime time, check quota
         if is_prime:
             has_quota, used_count = await self.cog.check_prime_time_quota(self.team, start_time)
@@ -1067,6 +1073,9 @@ class ReservationTimeModal(discord.ui.Modal):
                 
                 if is_prime:
                     embed.add_field(name="Status", value="✨ Prime Time Reservation", inline=False)
+
+                if is_prime and is_over_2_hours:
+                    embed.add_field(name="Notes", value="‼️ Prime Time Reservation longer than 2 Hours", inline=False)
                 
                 await reservations_channel.send(embed=embed)
         except Exception as e:

@@ -209,10 +209,7 @@ class PCs(commands.Cog):
         gr_start_time, gr_end_time = self.parse_time_range(hours_str)
 
         # Compare datetimes
-        if gr_start_time <= start_time <= gr_end_time and gr_start_time <= end_time <= gr_end_time:
-            return True
-        else:
-            return False
+        return gr_start_time <= start_time <= gr_end_time and gr_start_time <= end_time <= gr_end_time
 
     async def check_prime_time_quota(self, team: str, start_time: datetime) -> Tuple[bool, int]:
         """
@@ -706,7 +703,7 @@ class PCs(commands.Cog):
             ], 
             required=True
         ),
-        num_pcs: discord.Option(int, name="num_pcs", description="Number of PCs to reserve (1-8)", min_value=1, max_value=10, required=True),
+        num_pcs: discord.Option(int, name="num_pcs", description="Number of PCs to reserve (1-8)", min_value=1, max_value=8, required=True),
         res_type: discord.Option(
             str, 
             name="type", 

@@ -969,6 +969,14 @@ class ReservationTimeModal(discord.ui.Modal):
             )
             return
         
+        # Ensure reservation is within Gameroom hours
+        if not self.cog.is_within_open_hours(start_time, end_time):
+            await interaction.followup.send(
+                "❌ Requested reservation is not within Gameroom hours.",
+                ephemeral=True
+            )
+            return
+        
         # Validate advance booking (at least 2 days)
         if not self.cog.validate_advance_booking(start_time):
             await interaction.followup.send(

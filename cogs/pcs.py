@@ -707,6 +707,16 @@ class PCs(commands.Cog):
             required=True
         ),
         num_pcs: discord.Option(int, name="num_pcs", description="Number of PCs to reserve (1-8)", min_value=1, max_value=10, required=True),
+        res_type: discord.Option(
+            str, 
+            name="type", 
+            description="Scrim or match", 
+            choices=[
+                "Scrim", 
+                "Match"
+            ], 
+            required=True
+        ),
     ):
         # Check if user has required role
         allowed_role_ids = config.config["reservations"]["roles"]
@@ -720,7 +730,7 @@ class PCs(commands.Cog):
             return
         
         # Show modal for time input
-        modal = ReservationTimeModal(self, team, num_pcs)
+        modal = ReservationTimeModal(self, team, num_pcs, res_type)
         await ctx.send_modal(modal)
 
     @commands.slash_command(name="show_team_reservations", description="Show all team reservations for a specific date", guild_ids=[GUILD_ID])
@@ -916,11 +926,12 @@ class PCs(commands.Cog):
 
 
 class ReservationTimeModal(discord.ui.Modal):
-    def __init__(self, cog: 'PCs', team: str, num_pcs: int):
+    def __init__(self, cog: 'PCs', team: str, num_pcs: int, res_type: str):
         super().__init__(title="Reserve PCs - Set Time")
         self.cog = cog
         self.team = team
         self.num_pcs = num_pcs
+        self.res_type = res_type
         
         self.add_item(discord.ui.InputText(
             label="Date",
@@ -1068,6 +1079,7 @@ class ReservationTimeModal(discord.ui.Modal):
                 embed.add_field(name="Manager", value=manager, inline=True)
                 embed.add_field(name="Date", value=start_time.strftime('%A, %B %d, %Y'), inline=False)
                 embed.add_field(name="Time", value=f"{start_time.strftime('%I:%M %p')} - {end_time.strftime('%I:%M %p')} CST", inline=True)
+                embed.add_field(name="Res Type", value=self.res_type, inline=False)
                 embed.add_field(name="PCs", value="\n".join(room_info), inline=False)
                 
                 if is_prime:

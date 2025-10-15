@@ -1,7 +1,8 @@
-FROM python:3.10-alpine
+FROM ghcr.io/astral-sh/uv:python3.10-alpine
 WORKDIR /bot
 COPY . /bot
 
-RUN pip install -r requirements.txt
+# Install dependencies using uv
+RUN uv sync --frozen
 
-CMD ["python", "-u", "bot.py"]
+CMD ["uv", "run", "bot.py"]

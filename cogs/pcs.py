@@ -28,6 +28,7 @@ PRIME_TIME_WEEKDAY_HOUR = 19  # 7 PM
 PRIME_TIME_WEEKEND_HOUR = 18  # 6 PM
 
 GAME_HEAD_EMAILS = config.config["gameheads"]
+STAFF_LIST = config.config["gameroom"]["staff"]
 
 STATE_TO_EMOJI = {
     "ReadyForUser": ":green_square:",
@@ -58,6 +59,8 @@ class PCs(commands.Cog):
             'Apex White': 1,
             'Apex Purple': 1,
         }
+        # Staff ping index for cycling through gameroom staff
+        self.staff_ping_index = 0
 
     @staticmethod
     def format_pc(pc: int) -> str:
@@ -1088,7 +1091,13 @@ class ReservationTimeModal(discord.ui.Modal):
                 if is_prime and is_over_2_hours:
                     embed.add_field(name="Notes", value="‼️ Prime Time Reservation longer than 2 Hours", inline=False)
                 
-                await reservations_channel.send(embed=embed)
+                # Ping the next staff member in rotation
+                if STAFF_LIST:
+                    staff_id = STAFF_LIST[self.cog.staff_ping_index % len(STAFF_LIST)]
+                    await reservations_channel.send(f"<@{staff_id}>", embed=embed)
+                    self.cog.staff_ping_index = (self.cog.staff_ping_index + 1) % len(STAFF_LIST)
+                else:
+                    await reservations_channel.send(embed=embed)
         except Exception as e:
             print(f"Failed to send notification to nexus-reservations: {e}")
 

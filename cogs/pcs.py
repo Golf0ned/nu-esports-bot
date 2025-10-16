@@ -27,6 +27,8 @@ MAIN_ROOM_PCS = list(range(1, 11))
 PRIME_TIME_WEEKDAY_HOUR = 19  # 7 PM
 PRIME_TIME_WEEKEND_HOUR = 18  # 6 PM
 
+GAME_HEAD_EMAILS = config.config["gameheads"]
+
 STATE_TO_EMOJI = {
     "ReadyForUser": ":green_square:",
     "UserLoggedIn": ":red_square:",
@@ -1072,11 +1074,12 @@ class ReservationTimeModal(discord.ui.Modal):
                     color=discord.Color.from_rgb(78, 42, 132),
                     timestamp=datetime.now(timezone.utc)
                 )
-                embed.add_field(name="Team", value=self.team, inline=True)
-                embed.add_field(name="Manager", value=manager, inline=True)
+                embed.add_field(name="Team", value=self.team, inline=False)
+                embed.add_field(name="Res Type", value=self.res_type, inline=False)
+                embed.add_field(name="Manager Email", value=GAME_HEAD_EMAILS[manager], inline=False)
+                embed.add_field(name="Manager", value=manager, inline=False)
                 embed.add_field(name="Date", value=start_time.strftime('%A, %B %d, %Y'), inline=False)
                 embed.add_field(name="Time", value=f"{start_time.strftime('%I:%M %p')} - {end_time.strftime('%I:%M %p')} CST", inline=True)
-                embed.add_field(name="Res Type", value=self.res_type, inline=False)
                 embed.add_field(name="PCs", value="\n".join(room_info), inline=False)
                 
                 if is_prime:

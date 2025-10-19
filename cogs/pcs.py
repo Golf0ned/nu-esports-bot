@@ -29,6 +29,7 @@ PRIME_TIME_WEEKEND_HOUR = 18  # 6 PM
 
 GAME_HEAD_EMAILS = config.config["gameheads"]
 STAFF_LIST = config.config["gameroom"]["staff"]
+BOT_DEV_IDS = config.config["bot_devs"]
 
 STATE_TO_EMOJI = {
     "ReadyForUser": ":green_square:",
@@ -817,8 +818,7 @@ class PCs(commands.Cog):
         ),
     ):
         # Check if user is a bot dev
-        bot_dev_ids = config.config.get("bot_devs", [])
-        is_bot_dev = ctx.author.id in bot_dev_ids
+        is_bot_dev = ctx.author.id in BOT_DEV_IDS
 
         # Check if user has required role (skip if bot dev)
         if not is_bot_dev:

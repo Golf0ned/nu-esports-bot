@@ -1,6 +1,11 @@
 services:
   bot:
-    build: .
+    build:
+      context: .
+      args:
+        PROD: ${PROD:-false}
+        CONFIG_ACCESS_TOKEN: ${CONFIG_ACCESS_TOKEN:-}
+        GGLEAP_URL: ${GGLEAP_URL:-}
     restart: always
     depends_on:
       db:

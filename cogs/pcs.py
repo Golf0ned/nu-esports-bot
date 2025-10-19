@@ -1227,9 +1227,7 @@ class ReservationTimeModal(discord.ui.Modal):
         try:
             # Get the reservations channel from config
             channel_id = config.config["reservations"]["channel"]
-            print(f"channel_id: {channel_id}")
             reservations_channel = self.cog.bot.get_channel(channel_id)
-            print(f"reservations_channel: {reservations_channel}")
 
             if reservations_channel:
                 # Determine room type

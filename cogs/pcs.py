@@ -1,6 +1,7 @@
 import io
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Tuple, List
+from zoneinfo import ZoneInfo
 
 import aiohttp
 import discord
@@ -18,8 +19,8 @@ GGLEAP_BASE_URL = config.config["apis"]["ggleap"]
 PCS_ENDPOINT = f"{GGLEAP_BASE_URL}/machines/uptime"
 RESERVATIONS_ENDPOINT = f"{GGLEAP_BASE_URL}/reservations"
 
-# Constants
-CST_OFFSET = timezone(timedelta(hours=-6))
+# Constants - Use ZoneInfo for proper DST handling
+CENTRAL_TZ = ZoneInfo("America/Chicago")
 ADVANCE_BOOKING_DAYS = 2
 MAX_MAIN_ROOM_PCS = 5
 BACK_ROOM_PCS = [0, 14, 15]  # 0 = Streaming, 14 = Back Room 1, 15 = Back Room 2
@@ -66,13 +67,6 @@ class PCs(commands.Cog):
     def format_pc(pc: int) -> str:
         """Format a PC number for display"""
         return "Streaming" if pc == 0 else f"PC {pc}"
-
-    @staticmethod
-    def ensure_timezone(dt: datetime, assume_utc: bool = True) -> datetime:
-        """Ensure a datetime has timezone info, converting to CST"""
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc if assume_utc else CST_OFFSET)
-        return dt.astimezone(CST_OFFSET)
 
     async def get_reservations_in_range(
         self, start_time: datetime, end_time: datetime
@@ -166,13 +160,13 @@ class PCs(commands.Cog):
             # Parse start time
             start_time = datetime.strptime(start_time_str.strip(), "%I:%M%p")
             start_dt = datetime(
-                year, month, day, start_time.hour, start_time.minute, tzinfo=CST_OFFSET
+                year, month, day, start_time.hour, start_time.minute, tzinfo=CENTRAL_TZ
             )
 
             # Parse end time
             end_time = datetime.strptime(end_time_str.strip(), "%I:%M%p")
             end_dt = datetime(
-                year, month, day, end_time.hour, end_time.minute, tzinfo=CST_OFFSET
+                year, month, day, end_time.hour, end_time.minute, tzinfo=CENTRAL_TZ
             )
 
             return start_dt, end_dt
@@ -183,7 +177,7 @@ class PCs(commands.Cog):
 
     def validate_advance_booking(self, start_time: datetime) -> bool:
         """Check if reservation is at least 2 days in advance"""
-        now = datetime.now(CST_OFFSET)
+        now = datetime.now(CENTRAL_TZ)
         days_ahead = (start_time.date() - now.date()).days
         return days_ahead >= ADVANCE_BOOKING_DAYS
 
@@ -454,7 +448,7 @@ class PCs(commands.Cog):
         currently_reserved = set()
         if reservations:
             THRESHOLD_MINUTES = 30
-            now = datetime.now(CST_OFFSET)
+            now = datetime.now(CENTRAL_TZ)
 
             for res in reservations:
                 machines = res.get("machines", [])
@@ -463,19 +457,16 @@ class PCs(commands.Cog):
                 if not start_time_str or not end_time_str:
                     continue
 
-                # Parse and convert to CST
-                start_utc = datetime.fromisoformat(start_time_str)
-                end_utc = datetime.fromisoformat(end_time_str)
-                start_cst = PCs.ensure_timezone(start_utc)
-                end_cst = PCs.ensure_timezone(end_utc)
+                start_time = datetime.fromisoformat(start_time_str)
+                end_time = datetime.fromisoformat(end_time_str)
 
                 # Check if reservation is currently active
-                if start_cst <= now <= end_cst:
+                if start_time <= now <= end_time:
                     for machine in machines:
                         currently_reserved.add(machine)
 
                 # Check if reservation starts soon
-                time_diff = (start_cst - now).total_seconds() / 60  # minutes
+                time_diff = (start_time - now).total_seconds() / 60  # minutes
                 if 0 < time_diff <= THRESHOLD_MINUTES:
                     for machine in machines:
                         if (
@@ -558,8 +549,8 @@ class PCs(commands.Cog):
 
         # Fetch reservations for upcoming reservation warnings
         try:
-            # Get current time in CST (UTC-6)
-            today = datetime.now(CST_OFFSET)
+            # Get current time in Central Time
+            today = datetime.now(CENTRAL_TZ)
             date_str = today.strftime("%Y-%m-%d")
             reservations_data = await self.fetch_reservations(date_str)
             reservations = reservations_data.get("reservations", [])
@@ -628,7 +619,7 @@ class PCs(commands.Cog):
 
         # Fetch reservations to check if PC is currently reserved
         try:
-            today = datetime.now(CST_OFFSET)
+            today = datetime.now(CENTRAL_TZ)
             date_str = today.strftime("%Y-%m-%d")
             reservations_data = await self.fetch_reservations(date_str)
             reservations = reservations_data.get("reservations", [])
@@ -665,7 +656,7 @@ class PCs(commands.Cog):
 
         # Check if PC is currently in a reserved block
         currently_reserved = False
-        now = datetime.now(CST_OFFSET)
+        now = datetime.now(CENTRAL_TZ)
         for res in reservations:
             machines = res.get("machines", [])
             if name not in machines:
@@ -675,12 +666,10 @@ class PCs(commands.Cog):
             if not start_time_str or not end_time_str:
                 continue
 
-            start_utc = datetime.fromisoformat(start_time_str)
-            end_utc = datetime.fromisoformat(end_time_str)
-            start_cst = PCs.ensure_timezone(start_utc)
-            end_cst = PCs.ensure_timezone(end_utc)
+            start_time = datetime.fromisoformat(start_time_str)
+            end_time = datetime.fromisoformat(end_time_str)
 
-            if start_cst <= now <= end_cst:
+            if start_time <= now <= end_time:
                 currently_reserved = True
                 break
 
@@ -730,7 +719,7 @@ class PCs(commands.Cog):
     ):
         await ctx.defer()
 
-        # Parse or default to today (in CST)
+        # Parse or default to today (in Central Time)
         if date:
             try:
                 target_date = datetime.strptime(date, "%Y-%m-%d")
@@ -741,7 +730,7 @@ class PCs(commands.Cog):
                 )
                 return
         else:
-            target_date = datetime.now(CST_OFFSET)
+            target_date = datetime.now(CENTRAL_TZ)
 
         date_str = target_date.strftime("%Y-%m-%d")
 
@@ -864,11 +853,11 @@ class PCs(commands.Cog):
 
         await ctx.defer()
 
-        # Parse or default to today (in CST)
+        # Parse or default to today (in Central Time)
         if date:
             try:
                 target_date = datetime.strptime(date, "%Y-%m-%d")
-                target_date = target_date.replace(tzinfo=CST_OFFSET)
+                target_date = target_date.replace(tzinfo=CENTRAL_TZ)
             except ValueError:
                 await ctx.followup.send(
                     "Invalid date format. Please use YYYY-MM-DD (e.g., 2025-10-10)",
@@ -876,7 +865,7 @@ class PCs(commands.Cog):
                 )
                 return
         else:
-            target_date = datetime.now(CST_OFFSET)
+            target_date = datetime.now(CENTRAL_TZ)
 
         # Get start and end of the day
         start_of_day = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -912,14 +901,11 @@ class PCs(commands.Cog):
                 for pc in sorted(res["pcs"], key=lambda x: (x == 0, x))
             )
 
-            # Format times (convert to CST if needed)
-            start_cst = PCs.ensure_timezone(res["start_time"])
-            end_cst = PCs.ensure_timezone(res["end_time"])
+            start_time = res["start_time"]
+            end_time = res["end_time"]
 
             # Build field value
-            time_str = (
-                f"{start_cst.strftime('%I:%M %p')} - {end_cst.strftime('%I:%M %p')} CST"
-            )
+            time_str = f"{start_time.strftime('%I:%M %p')} - {end_time.strftime('%I:%M %p')} CST"
             prime_indicator = " ✨" if res["is_prime_time"] else ""
 
             field_value = (
@@ -954,10 +940,10 @@ class PCs(commands.Cog):
         # Build time slots from start_hour to end_hour:end_minute in 30-minute increments
         time_slots = []
         base_date = target_date.replace(
-            hour=start_hour, minute=0, second=0, microsecond=0, tzinfo=CST_OFFSET
+            hour=start_hour, minute=0, second=0, microsecond=0, tzinfo=CENTRAL_TZ
         )
         end_time = target_date.replace(
-            hour=end_hour, minute=end_minute, second=0, microsecond=0, tzinfo=CST_OFFSET
+            hour=end_hour, minute=end_minute, second=0, microsecond=0, tzinfo=CENTRAL_TZ
         )
 
         current_time = base_date
@@ -972,11 +958,8 @@ class PCs(commands.Cog):
         for res in reservations:
             machines = res.get("machines", [])
 
-            # Parse times and convert to CST
-            start_utc = datetime.fromisoformat(res.get("start_time"))
-            end_utc = datetime.fromisoformat(res.get("end_time"))
-            start_cst = PCs.ensure_timezone(start_utc)
-            end_cst = PCs.ensure_timezone(end_utc)
+            start_time = datetime.fromisoformat(res.get("start_time"))
+            end_time = datetime.fromisoformat(res.get("end_time"))
 
             # Mark time slots as reserved for each machine
             for machine in machines:
@@ -987,7 +970,7 @@ class PCs(commands.Cog):
                 for slot_idx, slot_time in enumerate(time_slots):
                     slot_end = slot_time + timedelta(minutes=30)
                     # Check if this slot overlaps with the reservation
-                    if start_cst < slot_end and end_cst > slot_time:
+                    if start_time < slot_end and end_time > slot_time:
                         desk_reservations[machine].add(slot_idx)
 
         # Image dimensions

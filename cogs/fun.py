@@ -1,6 +1,5 @@
 import asyncio
 import random
-from datetime import timedelta
 
 import discord
 from discord.ext import commands
@@ -42,19 +41,61 @@ class Fun(commands.Cog):
             await ctx.respond("Failed to fetch Hannah from the server!", ephemeral=True)
             return
 
-        # Apply timeout for text channels (3 minutes)
-        try:
-            await member.timeout_for(
-                timedelta(minutes=3), reason="Muted by /mutehannah command"
-            )
-        except discord.Forbidden:
-            await ctx.respond(
-                "I don't have permission to timeout Hannah!", ephemeral=True
-            )
-            return
-        except discord.HTTPException as e:
-            await ctx.respond(f"Failed to timeout Hannah: {e}", ephemeral=True)
-            return
+        # Deny send message permissions in all text channels
+        text_channels = [
+            channel
+            for channel in ctx.guild.channels
+            if isinstance(channel, discord.TextChannel)
+        ]
+
+        # Store original permissions to restore later
+        original_permissions = {}
+        for channel in text_channels:
+            try:
+                overwrite = channel.overwrites_for(member)
+                original_permissions[channel.id] = overwrite.send_messages
+                overwrite.send_messages = False
+                await channel.set_permissions(
+                    member, overwrite=overwrite, reason="Muted by /mutehannah command"
+                )
+            except (discord.Forbidden, discord.HTTPException):
+                pass  # Skip channels where we don't have permission
+
+        # Schedule permission restore after 3 minutes
+        async def restore_text_permissions():
+            await asyncio.sleep(180)
+            for channel in text_channels:
+                try:
+                    overwrite = channel.overwrites_for(member)
+                    # Restore original permission state
+                    original_perm = original_permissions.get(channel.id)
+                    if original_perm is None:
+                        # Remove the overwrite if it wasn't set before
+                        overwrite.send_messages = None
+                        if overwrite.is_empty():
+                            await channel.set_permissions(
+                                member,
+                                overwrite=None,
+                                reason="Auto-unmute after 3 minutes",
+                            )
+                        else:
+                            await channel.set_permissions(
+                                member,
+                                overwrite=overwrite,
+                                reason="Auto-unmute after 3 minutes",
+                            )
+                    else:
+                        overwrite.send_messages = original_perm
+                        await channel.set_permissions(
+                            member,
+                            overwrite=overwrite,
+                            reason="Auto-unmute after 3 minutes",
+                        )
+                except (discord.Forbidden, discord.HTTPException):
+                    pass  # Silently fail if we can't restore
+
+        # Run the restore task in the background
+        asyncio.create_task(restore_text_permissions())
 
         # Mute in voice if they're in a voice channel
         voice_muted = False

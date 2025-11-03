@@ -1,4 +1,6 @@
 fun:
+  hannah: #<userid>
+  hannah-haters: #<role_id>
   chess_emojis:
     blunder: #<emoji_id>
     mistake: #<emoji_id>

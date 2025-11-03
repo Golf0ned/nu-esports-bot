@@ -28,6 +28,9 @@ class Fun(commands.Cog):
             )
             return
 
+        # Defer the response to avoid timeout (processing takes time)
+        await ctx.defer()
+
         # Get the target user ID from config
         target_user_id = config.config["fun"]["hannah"]
 
@@ -35,10 +38,10 @@ class Fun(commands.Cog):
         try:
             member = await ctx.guild.fetch_member(target_user_id)
         except discord.NotFound:
-            await ctx.respond("Hannah is not in this server!", ephemeral=True)
+            await ctx.respond("Hannah is not in this server!")
             return
         except discord.HTTPException:
-            await ctx.respond("Failed to fetch Hannah from the server!", ephemeral=True)
+            await ctx.respond("Failed to fetch Hannah from the server!")
             return
 
         # Deny send message permissions in all text channels
@@ -120,8 +123,7 @@ class Fun(commands.Cog):
                 asyncio.create_task(unmute_after_delay())
             except discord.Forbidden:
                 await ctx.respond(
-                    "Hannah has been timed out for 3 minutes, but I don't have permission to voice mute!",
-                    ephemeral=True,
+                    "Hannah has been muted in text for 3 minutes, but I don't have permission to voice mute!"
                 )
                 return
             except discord.HTTPException:
@@ -134,7 +136,7 @@ class Fun(commands.Cog):
             )
         else:
             await ctx.respond(
-                "Hannah has been timed out for 3 minutes in text channels! 🤫"
+                "Hannah has been muted for 3 minutes in text channels! 🤫"
             )
 
     @commands.Cog.listener()

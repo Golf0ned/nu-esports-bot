@@ -59,6 +59,7 @@ class PCs(commands.Cog):
             "League Purple": 1,
             "Apex White": 1,
             "Apex Purple": 1,
+            "Rocket League Purple": 1,
         }
         # Staff ping index for cycling through gameroom staff
         self.staff_ping_index = 0
@@ -787,6 +788,7 @@ class PCs(commands.Cog):
                 "League Purple",
                 "Apex White",
                 "Apex Purple",
+                "Rocket League Purple",
             ],
             required=True,
         ),

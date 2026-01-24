@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 
 import aiohttp
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 from PIL import Image, ImageDraw, ImageFont
 
 from utils import config
@@ -63,6 +63,39 @@ class PCs(commands.Cog):
         }
         # Staff ping index for cycling through gameroom staff
         self.staff_ping_index = 0
+        # Track reservation messages pending acknowledgment
+        # Format: {message_id: {"staff_id": int, "channel_id": int, "sent_at": datetime, "team": str}}
+        self.pending_acknowledgments = {}
+        # Start background task
+        self.check_pending_acknowledgments.start()
+
+    @commands.Cog.listener()
+    async def on_reaction_add(self, reaction, user):
+        """Remove reservation from pending when staff reacts to acknowledge"""
+        if user.bot:
+            return
+        if reaction.message.id in self.pending_acknowledgments:
+            del self.pending_acknowledgments[reaction.message.id]
+
+    @tasks.loop(hours=1)
+    async def check_pending_acknowledgments(self):
+        """Re-ping staff for reservations that haven't been acknowledged after 24 hours"""
+        now = datetime.now(CENTRAL_TZ)
+        reminder_threshold = timedelta(hours=24)
+
+        for msg_id, data in list(self.pending_acknowledgments.items()):
+            if now - data["sent_at"] > reminder_threshold:
+                channel = self.bot.get_channel(data["channel_id"])
+                if channel:
+                    await channel.send(
+                        f"<@{data['staff_id']}> Reminder to make the reservation for **{data['team']}** (react to the message above)"
+                    )
+                del self.pending_acknowledgments[msg_id]
+
+    @check_pending_acknowledgments.before_loop
+    async def before_check_pending_acknowledgments(self):
+        """Wait until bot is ready before starting the loop"""
+        await self.bot.wait_until_ready()
 
     @staticmethod
     def format_pc(pc: int) -> str:
@@ -543,6 +576,8 @@ class PCs(commands.Cog):
             data = await self.fetch_pcs()
         except Exception as e:
             print(e)
+            # Reset cooldown so user can retry
+            self.pcs.reset_cooldown(ctx)
             await ctx.followup.send(
                 "Failed to fetch PC statuses. Please try again later.", ephemeral=True
             )
@@ -1064,10 +1099,14 @@ class ReservationTimeModal(discord.ui.Modal):
         self.res_type = res_type
         self.is_bot_dev = is_bot_dev
 
+        # Calculate example date as today + 2 days (minimum advance booking)
+        example_date = (datetime.now(CENTRAL_TZ) + timedelta(days=2)).strftime(
+            "%Y-%m-%d"
+        )
         self.add_item(
             discord.ui.InputText(
                 label="Date",
-                placeholder="YYYY-MM-DD (e.g., 2025-10-15)",
+                placeholder=f"YYYY-MM-DD (e.g., {example_date})",
                 style=discord.InputTextStyle.short,
                 required=True,
             )
@@ -1276,7 +1315,14 @@ class ReservationTimeModal(discord.ui.Modal):
                 # Ping the next staff member in rotation
                 if STAFF_LIST:
                     staff_id = STAFF_LIST[self.cog.staff_ping_index % len(STAFF_LIST)]
-                    await reservations_channel.send(f"<@{staff_id}>", embed=embed)
+                    msg = await reservations_channel.send(f"<@{staff_id}>", embed=embed)
+                    # Track for acknowledgment
+                    self.cog.pending_acknowledgments[msg.id] = {
+                        "staff_id": staff_id,
+                        "channel_id": reservations_channel.id,
+                        "sent_at": datetime.now(CENTRAL_TZ),
+                        "team": self.team,
+                    }
                     self.cog.staff_ping_index = (self.cog.staff_ping_index + 1) % len(
                         STAFF_LIST
                     )

@@ -60,6 +60,7 @@ class PCs(commands.Cog):
             "Apex White": 1,
             "Apex Purple": 1,
             "Rocket League Purple": 1,
+            "External": 99,
         }
         # Staff ping index for cycling through gameroom staff
         self.staff_ping_index = 0
@@ -863,6 +864,24 @@ class PCs(commands.Cog):
         await ctx.send_modal(modal)
 
     @commands.slash_command(
+        name="reserve-external",
+        description="Reserve all PCs for external event (staff only)",
+        guild_ids=[GUILD_ID],
+    )
+    async def reserve_external(self, ctx):
+        # Check if user is staff
+        if ctx.author.id not in STAFF_LIST:
+            await ctx.respond(
+                "❌ Only game room staff can make external reservations.",
+                ephemeral=True,
+            )
+            return
+
+        # Show modal for date/time input
+        modal = ExternalReservationTimeModal(self)
+        await ctx.send_modal(modal)
+
+    @commands.slash_command(
         name="show_team_reservations",
         description="Show all team reservations for a specific date",
         guild_ids=[GUILD_ID],
@@ -1330,6 +1349,116 @@ class ReservationTimeModal(discord.ui.Modal):
                     await reservations_channel.send(embed=embed)
         except Exception as e:
             print(f"Failed to send notification to nexus-reservations: {e}")
+
+
+class ExternalReservationTimeModal(discord.ui.Modal):
+    def __init__(self, cog: "PCs"):
+        super().__init__(title="External Reservation - Set Time")
+        self.cog = cog
+
+        # Calculate example date as today (no advance booking requirement for external)
+        example_date = datetime.now(CENTRAL_TZ).strftime("%Y-%m-%d")
+        self.add_item(
+            discord.ui.InputText(
+                label="Date",
+                placeholder=f"YYYY-MM-DD (e.g., {example_date})",
+                style=discord.InputTextStyle.short,
+                required=True,
+            )
+        )
+
+        self.add_item(
+            discord.ui.InputText(
+                label="Start Time",
+                placeholder="H:MMAM/PM (e.g., 7:00PM)",
+                style=discord.InputTextStyle.short,
+                required=True,
+            )
+        )
+
+        self.add_item(
+            discord.ui.InputText(
+                label="End Time",
+                placeholder="H:MMAM/PM (e.g., 9:00PM)",
+                style=discord.InputTextStyle.short,
+                required=True,
+            )
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+
+        # Get values from modal
+        date_str = self.children[0].value.strip()
+        start_time_str = self.children[1].value.strip()
+        end_time_str = self.children[2].value.strip()
+
+        # Combine into the format expected by parse_time_range
+        times = f"{date_str} {start_time_str}-{end_time_str}"
+
+        # Parse time range
+        try:
+            start_time, end_time = self.cog.parse_time_range(times)
+        except ValueError as e:
+            await interaction.followup.send(f"❌ {str(e)}", ephemeral=True)
+            return
+
+        # Ensure end time is after start time
+        if start_time > end_time:
+            await interaction.followup.send(
+                "❌ Requested reservation start time is after the requested end time.",
+                ephemeral=True,
+            )
+            return
+
+        # Skip advance booking requirement for external reservations (staff flexibility)
+        # Skip gameroom hours check for external reservations (special events may be outside hours)
+
+        # External reservations reserve ALL PCs
+        all_pcs = BACK_ROOM_PCS + MAIN_ROOM_PCS  # 13 total PCs
+
+        # Check for ANY existing reservations in the time slot
+        overlapping = await self.cog.get_reservations_in_range(start_time, end_time)
+        if overlapping:
+            # Build conflict message
+            conflict_teams = list(set(res["team"] for res in overlapping))
+            await interaction.followup.send(
+                f"❌ Cannot reserve all PCs - existing reservations conflict with this time slot.\n"
+                f"**Conflicting teams:** {', '.join(conflict_teams)}\n"
+                f"Please choose a different time or coordinate with the teams.",
+                ephemeral=True,
+            )
+            return
+
+        # Check if this is a prime time reservation
+        is_prime = self.cog.is_prime_time(start_time, end_time, all_pcs)
+
+        # Save reservation to database
+        manager = (
+            f"{interaction.user.name}#{interaction.user.discriminator}"
+            if interaction.user.discriminator != "0"
+            else interaction.user.name
+        )
+        await self.cog.save_reservation(
+            "External", all_pcs, start_time, end_time, manager, is_prime
+        )
+
+        # Format PC list for display
+        pc_list = ", ".join(
+            PCs.format_pc(pc) for pc in sorted(all_pcs, key=lambda x: (x == 0, x))
+        )
+
+        # Send confirmation to user
+        await interaction.followup.send(
+            f"✅ External reservation confirmed!\n\n"
+            f"**Event Type:** External Event\n"
+            f"**PCs:** {pc_list}\n"
+            f"**Time:** {start_time.strftime('%A, %B %d, %Y %I:%M %p')} - {end_time.strftime('%I:%M %p')} CST\n"
+            f"**Reserved by:** {manager}",
+            ephemeral=True,
+        )
+
+        # Skip staff notification since staff is already making the reservation
 
 
 class ReservationView(discord.ui.View):

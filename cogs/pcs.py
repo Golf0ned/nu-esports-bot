@@ -818,9 +818,13 @@ class PCs(commands.Cog):
                 )
                 continue
 
-            # Check if this reservation has a matching GGLeap entry
-            if not self._find_matching_ggleap_reservation(db_res, ggleap_reservations):
-                pending_reservations.append(db_res)
+            # Find which PCs from this reservation are not yet in GGLeap
+            pending_pcs = self._find_pending_pcs(db_res, ggleap_reservations)
+            if pending_pcs:
+                # Create a copy with only the pending PCs
+                pending_res = db_res.copy()
+                pending_res["pcs"] = pending_pcs
+                pending_reservations.append(pending_res)
 
         # Combine GGLeap reservations with external reservations for display
         combined_reservations = ggleap_reservations + external_as_ggleap
@@ -843,11 +847,13 @@ class PCs(commands.Cog):
 
         await ctx.followup.send(embeds=embeds, file=file, view=view)
 
-    def _find_matching_ggleap_reservation(
+    def _find_pending_pcs(
         self, db_res: Dict, ggleap_reservations: List[Dict]
-    ) -> bool:
-        """Check if a database reservation has a matching GGLeap entry"""
-        db_desks = {PCs.pc_number_to_desk_name(pc) for pc in db_res["pcs"]}
+    ) -> List[int]:
+        """
+        Find which PCs from a database reservation are NOT yet in GGLeap.
+        Returns list of PC numbers that are pending (not in GGLeap).
+        """
         db_start = db_res["start_time"]
         db_end = db_res["end_time"]
 
@@ -856,6 +862,9 @@ class PCs(commands.Cog):
             db_start = db_start.replace(tzinfo=CENTRAL_TZ)
         if db_end.tzinfo is None:
             db_end = db_end.replace(tzinfo=CENTRAL_TZ)
+
+        # Track which PCs are covered in GGLeap
+        covered_pcs = set()
 
         for gg_res in ggleap_reservations:
             gg_desks = set(gg_res.get("machines", []))
@@ -868,16 +877,21 @@ class PCs(commands.Cog):
             if gg_end.tzinfo is None:
                 gg_end = gg_end.replace(tzinfo=CENTRAL_TZ)
 
-            # Check if times match (within 5 minutes tolerance)
-            # and at least some PCs overlap
+            # Check if times overlap (within 5 minutes tolerance)
             time_tolerance = 300  # 5 minutes in seconds
             if (
                 abs((db_start - gg_start).total_seconds()) < time_tolerance
                 and abs((db_end - gg_end).total_seconds()) < time_tolerance
-                and db_desks & gg_desks  # Intersection not empty
             ):
-                return True
-        return False
+                # Find which DB PCs are in this GGLeap reservation
+                for pc in db_res["pcs"]:
+                    desk_name = PCs.pc_number_to_desk_name(pc)
+                    if desk_name in gg_desks:
+                        covered_pcs.add(pc)
+
+        # Return PCs that are NOT covered
+        pending_pcs = [pc for pc in db_res["pcs"] if pc not in covered_pcs]
+        return pending_pcs
 
     async def fetch_reservations(self, date_str: str) -> Dict:
         timeout = aiohttp.ClientTimeout(total=10)
@@ -1617,10 +1631,13 @@ class ReservationView(discord.ui.View):
                 )
                 continue
 
-            if not self.cog._find_matching_ggleap_reservation(
-                db_res, ggleap_reservations
-            ):
-                pending_reservations.append(db_res)
+            # Find which PCs from this reservation are not yet in GGLeap
+            pending_pcs = self.cog._find_pending_pcs(db_res, ggleap_reservations)
+            if pending_pcs:
+                # Create a copy with only the pending PCs
+                pending_res = db_res.copy()
+                pending_res["pcs"] = pending_pcs
+                pending_reservations.append(pending_res)
 
         combined_reservations = ggleap_reservations + external_as_ggleap
 

@@ -60,6 +60,7 @@ class PCs(commands.Cog):
             "Apex White": 1,
             "Apex Purple": 1,
             "Rocket League Purple": 1,
+            # External events have unlimited prime time quota since they're staff-managed
             "External": 99,
         }
         # Staff ping index for cycling through gameroom staff
@@ -798,33 +799,10 @@ class PCs(commands.Cog):
         )
         db_reservations = await self.get_reservations_in_range(start_of_day, end_of_day)
 
-        # Find pending reservations (in database but not in GGLeap)
-        pending_reservations = []
-        external_as_ggleap = []
-
-        for db_res in db_reservations:
-            # External reservations are treated as if they're in GGLeap (all PCs booked)
-            if db_res["team"] == "External":
-                # Convert external reservation to GGLeap format for display
-                all_desk_names = [
-                    PCs.pc_number_to_desk_name(pc) for pc in db_res["pcs"]
-                ]
-                external_as_ggleap.append(
-                    {
-                        "machines": all_desk_names,
-                        "start_time": db_res["start_time"].isoformat(),
-                        "end_time": db_res["end_time"].isoformat(),
-                    }
-                )
-                continue
-
-            # Find which PCs from this reservation are not yet in GGLeap
-            pending_pcs = self._find_pending_pcs(db_res, ggleap_reservations)
-            if pending_pcs:
-                # Create a copy with only the pending PCs
-                pending_res = db_res.copy()
-                pending_res["pcs"] = pending_pcs
-                pending_reservations.append(pending_res)
+        # Process database reservations to find external and pending
+        external_as_ggleap, pending_reservations = self._process_db_reservations(
+            db_reservations, ggleap_reservations
+        )
 
         # Combine GGLeap reservations with external reservations for display
         combined_reservations = ggleap_reservations + external_as_ggleap
@@ -892,6 +870,50 @@ class PCs(commands.Cog):
         # Return PCs that are NOT covered
         pending_pcs = [pc for pc in db_res["pcs"] if pc not in covered_pcs]
         return pending_pcs
+
+    def _process_db_reservations(
+        self, db_reservations: List[Dict], ggleap_reservations: List[Dict]
+    ) -> Tuple[List[Dict], List[Dict]]:
+        """
+        Process database reservations to separate external and pending reservations.
+
+        Args:
+            db_reservations: Reservations from the database
+            ggleap_reservations: Reservations from GGLeap API
+
+        Returns:
+            Tuple of (external_as_ggleap, pending_reservations)
+            - external_as_ggleap: External reservations converted to GGLeap format
+            - pending_reservations: Team reservations not yet in GGLeap
+        """
+        pending_reservations = []
+        external_as_ggleap = []
+
+        for db_res in db_reservations:
+            # External reservations are treated as if they're in GGLeap (all PCs booked)
+            if db_res["team"] == "External":
+                # Convert external reservation to GGLeap format for display
+                all_desk_names = [
+                    PCs.pc_number_to_desk_name(pc) for pc in db_res["pcs"]
+                ]
+                external_as_ggleap.append(
+                    {
+                        "machines": all_desk_names,
+                        "start_time": db_res["start_time"].isoformat(),
+                        "end_time": db_res["end_time"].isoformat(),
+                    }
+                )
+                continue
+
+            # Find which PCs from this reservation are not yet in GGLeap
+            pending_pcs = self._find_pending_pcs(db_res, ggleap_reservations)
+            if pending_pcs:
+                # Create a copy with only the pending PCs
+                pending_res = db_res.copy()
+                pending_res["pcs"] = pending_pcs
+                pending_reservations.append(pending_res)
+
+        return external_as_ggleap, pending_reservations
 
     async def fetch_reservations(self, date_str: str) -> Dict:
         timeout = aiohttp.ClientTimeout(total=10)
@@ -1567,20 +1589,11 @@ class ReservationView(discord.ui.View):
                 start_time = res["start_time"]
                 end_time = res["end_time"]
 
-                # Convert from UTC to CST
-                # Database stores times in UTC as naive datetimes
+                # Ensure times are timezone-aware (database stores Central Time)
                 if start_time.tzinfo is None:
-                    start_time = start_time.replace(tzinfo=timezone.utc).astimezone(
-                        CENTRAL_TZ
-                    )
-                else:
-                    start_time = start_time.astimezone(CENTRAL_TZ)
+                    start_time = start_time.replace(tzinfo=CENTRAL_TZ)
                 if end_time.tzinfo is None:
-                    end_time = end_time.replace(tzinfo=timezone.utc).astimezone(
-                        CENTRAL_TZ
-                    )
-                else:
-                    end_time = end_time.astimezone(CENTRAL_TZ)
+                    end_time = end_time.replace(tzinfo=CENTRAL_TZ)
 
                 field_value = (
                     f"**Team:** {res['team']}\n"
@@ -1599,10 +1612,14 @@ class ReservationView(discord.ui.View):
         return embeds, file
 
     async def _fetch_and_update(self, new_date: datetime):
-        """Fetch reservations for a new date and update the view state"""
+        """Fetch reservations for a new date and update the view state.
+
+        Raises:
+            Exception: If fetching reservations fails
+        """
         date_str = new_date.strftime("%Y-%m-%d")
 
-        # Fetch GGLeap reservations
+        # Fetch GGLeap reservations (may raise on network/API errors)
         data = await self.cog.fetch_reservations(date_str)
         ggleap_reservations = data.get("reservations", [])
 
@@ -1613,31 +1630,10 @@ class ReservationView(discord.ui.View):
             start_of_day, end_of_day
         )
 
-        # Find pending reservations
-        pending_reservations = []
-        external_as_ggleap = []
-
-        for db_res in db_reservations:
-            if db_res["team"] == "External":
-                all_desk_names = [
-                    PCs.pc_number_to_desk_name(pc) for pc in db_res["pcs"]
-                ]
-                external_as_ggleap.append(
-                    {
-                        "machines": all_desk_names,
-                        "start_time": db_res["start_time"].isoformat(),
-                        "end_time": db_res["end_time"].isoformat(),
-                    }
-                )
-                continue
-
-            # Find which PCs from this reservation are not yet in GGLeap
-            pending_pcs = self.cog._find_pending_pcs(db_res, ggleap_reservations)
-            if pending_pcs:
-                # Create a copy with only the pending PCs
-                pending_res = db_res.copy()
-                pending_res["pcs"] = pending_pcs
-                pending_reservations.append(pending_res)
+        # Process database reservations to find external and pending
+        external_as_ggleap, pending_reservations = self.cog._process_db_reservations(
+            db_reservations, ggleap_reservations
+        )
 
         combined_reservations = ggleap_reservations + external_as_ggleap
 

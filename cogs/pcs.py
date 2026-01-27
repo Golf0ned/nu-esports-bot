@@ -103,6 +103,13 @@ class PCs(commands.Cog):
         """Format a PC number for display"""
         return "Streaming" if pc == 0 else f"PC {pc}"
 
+    @staticmethod
+    def pc_number_to_desk_name(pc_num: int) -> str:
+        """Convert database PC number to GGLeap desk name format"""
+        if pc_num == 0:
+            return "Desk 000 - Streaming"
+        return f"Desk {pc_num:03d}"
+
     async def get_reservations_in_range(
         self, start_time: datetime, end_time: datetime
     ) -> List[Dict]:
@@ -760,6 +767,7 @@ class PCs(commands.Cog):
         if date:
             try:
                 target_date = datetime.strptime(date, "%Y-%m-%d")
+                target_date = target_date.replace(tzinfo=CENTRAL_TZ)
             except ValueError:
                 await ctx.followup.send(
                     "Invalid date format. Please use YYYY-MM-DD (e.g., 2025-09-30)",
@@ -771,7 +779,7 @@ class PCs(commands.Cog):
 
         date_str = target_date.strftime("%Y-%m-%d")
 
-        # Fetch reservations
+        # Fetch GGLeap reservations
         try:
             data = await self.fetch_reservations(date_str)
         except Exception as e:
@@ -781,9 +789,44 @@ class PCs(commands.Cog):
             )
             return
 
-        reservations = data.get("reservations", [])
+        ggleap_reservations = data.get("reservations", [])
 
-        if not reservations:
+        # Fetch database reservations for the same day
+        start_of_day = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_of_day = target_date.replace(
+            hour=23, minute=59, second=59, microsecond=999999
+        )
+        db_reservations = await self.get_reservations_in_range(start_of_day, end_of_day)
+
+        # Find pending reservations (in database but not in GGLeap)
+        pending_reservations = []
+        external_as_ggleap = []
+
+        for db_res in db_reservations:
+            # External reservations are treated as if they're in GGLeap (all PCs booked)
+            if db_res["team"] == "External":
+                # Convert external reservation to GGLeap format for display
+                all_desk_names = [
+                    PCs.pc_number_to_desk_name(pc) for pc in db_res["pcs"]
+                ]
+                external_as_ggleap.append(
+                    {
+                        "machines": all_desk_names,
+                        "start_time": db_res["start_time"].isoformat(),
+                        "end_time": db_res["end_time"].isoformat(),
+                    }
+                )
+                continue
+
+            # Check if this reservation has a matching GGLeap entry
+            if not self._find_matching_ggleap_reservation(db_res, ggleap_reservations):
+                pending_reservations.append(db_res)
+
+        # Combine GGLeap reservations with external reservations for display
+        combined_reservations = ggleap_reservations + external_as_ggleap
+
+        # If no reservations at all (GGLeap, external, or pending)
+        if not combined_reservations and not pending_reservations:
             embed = discord.Embed(
                 title=f"Reservations for {target_date.strftime('%A, %B %d, %Y')}",
                 description="No reservations found for this date.",
@@ -793,10 +836,48 @@ class PCs(commands.Cog):
             return
 
         # Build timeline view with interactive date navigation
-        view = ReservationView(reservations, target_date, self)
-        embed, file = await view.build_embed_and_file()
+        view = ReservationView(
+            combined_reservations, target_date, self, pending_reservations
+        )
+        embeds, file = await view.build_embed_and_file()
 
-        await ctx.followup.send(embed=embed, file=file, view=view)
+        await ctx.followup.send(embeds=embeds, file=file, view=view)
+
+    def _find_matching_ggleap_reservation(
+        self, db_res: Dict, ggleap_reservations: List[Dict]
+    ) -> bool:
+        """Check if a database reservation has a matching GGLeap entry"""
+        db_desks = {PCs.pc_number_to_desk_name(pc) for pc in db_res["pcs"]}
+        db_start = db_res["start_time"]
+        db_end = db_res["end_time"]
+
+        # Ensure db times are timezone-aware
+        if db_start.tzinfo is None:
+            db_start = db_start.replace(tzinfo=CENTRAL_TZ)
+        if db_end.tzinfo is None:
+            db_end = db_end.replace(tzinfo=CENTRAL_TZ)
+
+        for gg_res in ggleap_reservations:
+            gg_desks = set(gg_res.get("machines", []))
+            gg_start = datetime.fromisoformat(gg_res["start_time"])
+            gg_end = datetime.fromisoformat(gg_res["end_time"])
+
+            # Ensure GGLeap times are timezone-aware
+            if gg_start.tzinfo is None:
+                gg_start = gg_start.replace(tzinfo=CENTRAL_TZ)
+            if gg_end.tzinfo is None:
+                gg_end = gg_end.replace(tzinfo=CENTRAL_TZ)
+
+            # Check if times match (within 5 minutes tolerance)
+            # and at least some PCs overlap
+            time_tolerance = 300  # 5 minutes in seconds
+            if (
+                abs((db_start - gg_start).total_seconds()) < time_tolerance
+                and abs((db_end - gg_end).total_seconds()) < time_tolerance
+                and db_desks & gg_desks  # Intersection not empty
+            ):
+                return True
+        return False
 
     async def fetch_reservations(self, date_str: str) -> Dict:
         timeout = aiohttp.ClientTimeout(total=10)
@@ -881,101 +962,6 @@ class PCs(commands.Cog):
         modal = ExternalReservationTimeModal(self)
         await ctx.send_modal(modal)
 
-    @commands.slash_command(
-        name="show_team_reservations",
-        description="Show all team reservations for a specific date",
-        guild_ids=[GUILD_ID],
-    )
-    async def show_team_reservations(
-        self,
-        ctx,
-        date: discord.Option(
-            str,
-            name="date",
-            description="Date in YYYY-MM-DD format (default: today)",
-            required=False,
-        ),
-    ):
-        # Check if user has required role
-        allowed_role_ids = config.config["reservations"]["roles"]
-        user_role_ids = [role.id for role in ctx.author.roles]
-
-        if not any(role_id in allowed_role_ids for role_id in user_role_ids):
-            await ctx.respond(
-                "❌ You don't have permission to view team reservations. Contact a team manager.",
-                ephemeral=True,
-            )
-            return
-
-        await ctx.defer()
-
-        # Parse or default to today (in Central Time)
-        if date:
-            try:
-                target_date = datetime.strptime(date, "%Y-%m-%d")
-                target_date = target_date.replace(tzinfo=CENTRAL_TZ)
-            except ValueError:
-                await ctx.followup.send(
-                    "Invalid date format. Please use YYYY-MM-DD (e.g., 2025-10-10)",
-                    ephemeral=True,
-                )
-                return
-        else:
-            target_date = datetime.now(CENTRAL_TZ)
-
-        # Get start and end of the day
-        start_of_day = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
-        end_of_day = target_date.replace(
-            hour=23, minute=59, second=59, microsecond=999999
-        )
-
-        # Query database for reservations on this date
-        reservations = await self.get_reservations_in_range(start_of_day, end_of_day)
-
-        if not reservations:
-            embed = discord.Embed(
-                title=f"Team Reservations for {target_date.strftime('%A, %B %d, %Y')}",
-                description="No reservations found for this date.",
-                color=discord.Color.from_rgb(78, 42, 132),
-            )
-            await ctx.followup.send(embed=embed)
-            return
-
-        # Build embed with reservation details
-        embed = discord.Embed(
-            title=f"Team Reservations for {target_date.strftime('%A, %B %d, %Y')}",
-            color=discord.Color.from_rgb(78, 42, 132),
-        )
-
-        # Sort reservations by start time
-        reservations.sort(key=lambda r: r["start_time"])
-
-        for idx, res in enumerate(reservations, 1):
-            # Format PC list
-            pc_list = ", ".join(
-                PCs.format_pc(pc)
-                for pc in sorted(res["pcs"], key=lambda x: (x == 0, x))
-            )
-
-            start_time = res["start_time"]
-            end_time = res["end_time"]
-
-            # Build field value
-            time_str = f"{start_time.strftime('%I:%M %p')} - {end_time.strftime('%I:%M %p')} CST"
-            prime_indicator = " ✨" if res["is_prime_time"] else ""
-
-            field_value = (
-                f"**Team:** {res['team']}\n"
-                f"**PCs:** {pc_list}\n"
-                f"**Time:** {time_str}{prime_indicator}\n"
-                f"**Manager:** {res['manager']}"
-            )
-
-            embed.add_field(name=f"Reservation #{idx}", value=field_value, inline=False)
-
-        embed.set_footer(text="✨ = Prime Time Reservation")
-        await ctx.followup.send(embed=embed)
-
     @staticmethod
     def build_reservation_image(
         reservations: List[Dict],
@@ -983,8 +969,18 @@ class PCs(commands.Cog):
         start_hour: int,
         end_hour: int,
         end_minute: int = 0,
+        pending_reservations: List[Dict] = None,
     ) -> io.BytesIO:
-        """Build a 2D grid image with time slots (x-axis) and desks (y-axis)"""
+        """Build a 2D grid image with time slots (x-axis) and desks (y-axis)
+
+        Args:
+            reservations: GGLeap format reservations (confirmed/in system)
+            target_date: Date to display
+            start_hour: Start hour for grid
+            end_hour: End hour for grid
+            end_minute: End minute for grid
+            pending_reservations: Database format reservations not yet in GGLeap (shown in orange)
+        """
 
         # Define desks to show: 1-10, 14, 15, and Streaming
         all_desks = [f"Desk {i:03d}" for i in range(1, 11)] + [
@@ -1007,10 +1003,12 @@ class PCs(commands.Cog):
             time_slots.append(current_time)
             current_time += timedelta(minutes=30)
 
-        # Initialize grid: desk -> set of reserved time slot indices
-        desk_reservations = {desk: set() for desk in all_desks}
+        # Initialize grid: desk -> dict with 'reserved' and 'pending' sets of time slot indices
+        desk_reservations = {
+            desk: {"reserved": set(), "pending": set()} for desk in all_desks
+        }
 
-        # Process reservations
+        # Process GGLeap reservations (confirmed - purple)
         for res in reservations:
             machines = res.get("machines", [])
 
@@ -1027,7 +1025,35 @@ class PCs(commands.Cog):
                     slot_end = slot_time + timedelta(minutes=30)
                     # Check if this slot overlaps with the reservation
                     if start_time < slot_end and end_time > slot_time:
-                        desk_reservations[machine].add(slot_idx)
+                        desk_reservations[machine]["reserved"].add(slot_idx)
+
+        # Process pending reservations (database format - orange)
+        if pending_reservations:
+            for res in pending_reservations:
+                pcs = res.get("pcs", [])
+                start_time = res.get("start_time")
+                end_time = res.get("end_time")
+
+                # Ensure times are timezone-aware
+                if start_time.tzinfo is None:
+                    start_time = start_time.replace(tzinfo=CENTRAL_TZ)
+                if end_time.tzinfo is None:
+                    end_time = end_time.replace(tzinfo=CENTRAL_TZ)
+
+                # Mark time slots as pending for each PC
+                for pc_num in pcs:
+                    desk_name = PCs.pc_number_to_desk_name(pc_num)
+                    if desk_name not in desk_reservations:
+                        continue
+
+                    # Find which time slots are covered
+                    for slot_idx, slot_time in enumerate(time_slots):
+                        slot_end = slot_time + timedelta(minutes=30)
+                        # Check if this slot overlaps with the reservation
+                        if start_time < slot_end and end_time > slot_time:
+                            # Only mark as pending if not already reserved (purple takes precedence)
+                            if slot_idx not in desk_reservations[desk_name]["reserved"]:
+                                desk_reservations[desk_name]["pending"].add(slot_idx)
 
         # Image dimensions
         cell_size = 30
@@ -1042,6 +1068,7 @@ class PCs(commands.Cog):
         grid_color = (60, 63, 68)  # Slightly lighter for grid lines
         available_color = (87, 242, 135)  # Green
         reserved_color = (155, 89, 182)  # Purple
+        pending_color = (255, 165, 0)  # Orange
 
         # Create image
         img = Image.new("RGB", (width, height), bg_color)
@@ -1081,12 +1108,18 @@ class PCs(commands.Cog):
             draw.text((5, y + 8), short_name, fill=text_color, font=font)
 
             # Draw cells for this desk
-            reserved_slots = desk_reservations[desk]
+            reserved_slots = desk_reservations[desk]["reserved"]
+            pending_slots = desk_reservations[desk]["pending"]
             for slot_idx in range(len(time_slots)):
                 x = label_width + (slot_idx * cell_size)
-                color = (
-                    reserved_color if slot_idx in reserved_slots else available_color
-                )
+
+                # Determine color: purple (reserved) > orange (pending) > green (available)
+                if slot_idx in reserved_slots:
+                    color = reserved_color
+                elif slot_idx in pending_slots:
+                    color = pending_color
+                else:
+                    color = available_color
 
                 # Draw filled rectangle
                 draw.rectangle(
@@ -1462,11 +1495,18 @@ class ExternalReservationTimeModal(discord.ui.Modal):
 
 
 class ReservationView(discord.ui.View):
-    def __init__(self, reservations: List[Dict], target_date: datetime, cog: "PCs"):
+    def __init__(
+        self,
+        reservations: List[Dict],
+        target_date: datetime,
+        cog: "PCs",
+        pending_reservations: List[Dict] = None,
+    ):
         super().__init__(timeout=600)
         self.reservations = reservations
         self.target_date = target_date
         self.cog = cog
+        self.pending_reservations = pending_reservations or []
 
     def get_hours_for_range(self):
         """Get start/end hours based on day of week"""
@@ -1475,41 +1515,122 @@ class ReservationView(discord.ui.View):
         open_hour = 12 if is_weekend else 14
         return (open_hour, 22, 30)  # Open to close
 
-    async def build_embed_and_file(self) -> Tuple[discord.Embed, discord.File]:
+    async def build_embed_and_file(self) -> Tuple[List[discord.Embed], discord.File]:
         start_hour, end_hour, end_minute = self.get_hours_for_range()
         image_buffer = PCs.build_reservation_image(
-            self.reservations, self.target_date, start_hour, end_hour, end_minute
+            self.reservations,
+            self.target_date,
+            start_hour,
+            end_hour,
+            end_minute,
+            self.pending_reservations,
         )
 
-        embed = discord.Embed(
+        embeds = []
+
+        # Main embed with image
+        main_embed = discord.Embed(
             title=f"Reservations for {self.target_date.strftime('%A, %B %d, %Y')}",
             color=discord.Color.from_rgb(78, 42, 132),
         )
-        embed.set_image(url="attachment://reservations.png")
-        embed.set_footer(text="Green = Available · Purple = Reserved")
+        main_embed.set_image(url="attachment://reservations.png")
+        main_embed.set_footer(
+            text="Green = Available · Purple = Reserved · Orange = Pending (not in GGLeap)"
+        )
+        embeds.append(main_embed)
+
+        # Add separate embed for pending reservations (appears below the image)
+        if self.pending_reservations:
+            pending_embed = discord.Embed(
+                title="⚠️ Pending Reservations (not yet in GGLeap)",
+                color=discord.Color.orange(),
+            )
+            for res in self.pending_reservations:
+                pc_list = ", ".join(
+                    PCs.format_pc(pc)
+                    for pc in sorted(res["pcs"], key=lambda x: (x == 0, x))
+                )
+                start_time = res["start_time"]
+                end_time = res["end_time"]
+
+                # Ensure times are in CST
+                if start_time.tzinfo is None:
+                    start_time = start_time.replace(tzinfo=CENTRAL_TZ)
+                if end_time.tzinfo is None:
+                    end_time = end_time.replace(tzinfo=CENTRAL_TZ)
+
+                field_value = (
+                    f"**Team:** {res['team']}\n"
+                    f"**PCs:** {pc_list}\n"
+                    f"**Time:** {start_time.strftime('%I:%M %p')} - {end_time.strftime('%I:%M %p')} CST\n"
+                    f"**Manager:** {res['manager']}"
+                )
+                pending_embed.add_field(
+                    name="\u200b",  # Zero-width space for no field name
+                    value=field_value,
+                    inline=False,
+                )
+            embeds.append(pending_embed)
 
         file = discord.File(image_buffer, filename="reservations.png")
-        return embed, file
+        return embeds, file
+
+    async def _fetch_and_update(self, new_date: datetime):
+        """Fetch reservations for a new date and update the view state"""
+        date_str = new_date.strftime("%Y-%m-%d")
+
+        # Fetch GGLeap reservations
+        data = await self.cog.fetch_reservations(date_str)
+        ggleap_reservations = data.get("reservations", [])
+
+        # Fetch database reservations
+        start_of_day = new_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_of_day = new_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+        db_reservations = await self.cog.get_reservations_in_range(
+            start_of_day, end_of_day
+        )
+
+        # Find pending reservations
+        pending_reservations = []
+        external_as_ggleap = []
+
+        for db_res in db_reservations:
+            if db_res["team"] == "External":
+                all_desk_names = [
+                    PCs.pc_number_to_desk_name(pc) for pc in db_res["pcs"]
+                ]
+                external_as_ggleap.append(
+                    {
+                        "machines": all_desk_names,
+                        "start_time": db_res["start_time"].isoformat(),
+                        "end_time": db_res["end_time"].isoformat(),
+                    }
+                )
+                continue
+
+            if not self.cog._find_matching_ggleap_reservation(
+                db_res, ggleap_reservations
+            ):
+                pending_reservations.append(db_res)
+
+        combined_reservations = ggleap_reservations + external_as_ggleap
+
+        # Update view state
+        self.target_date = new_date
+        self.reservations = combined_reservations
+        self.pending_reservations = pending_reservations
 
     @discord.ui.button(label="◀ Previous Day", style=discord.ButtonStyle.gray)
     async def previous_day_button(
         self, button: discord.ui.Button, interaction: discord.Interaction
     ):
         await interaction.response.defer()
-        # Go back one day
         new_date = self.target_date - timedelta(days=1)
-        date_str = new_date.strftime("%Y-%m-%d")
 
         try:
-            data = await self.cog.fetch_reservations(date_str)
-            reservations = data.get("reservations", [])
-
-            # Update view with new data
-            self.target_date = new_date
-            self.reservations = reservations
-            embed, file = await self.build_embed_and_file()
-
-            await interaction.message.edit(embed=embed, file=file, view=self)
+            await self._fetch_and_update(new_date)
+            embeds, file = await self.build_embed_and_file()
+            await interaction.message.edit(embeds=embeds, file=file, view=self)
         except Exception as e:
             print(e)
             await interaction.followup.send(
@@ -1521,20 +1642,12 @@ class ReservationView(discord.ui.View):
         self, button: discord.ui.Button, interaction: discord.Interaction
     ):
         await interaction.response.defer()
-        # Go forward one day
         new_date = self.target_date + timedelta(days=1)
-        date_str = new_date.strftime("%Y-%m-%d")
 
         try:
-            data = await self.cog.fetch_reservations(date_str)
-            reservations = data.get("reservations", [])
-
-            # Update view with new data
-            self.target_date = new_date
-            self.reservations = reservations
-            embed, file = await self.build_embed_and_file()
-
-            await interaction.message.edit(embed=embed, file=file, view=self)
+            await self._fetch_and_update(new_date)
+            embeds, file = await self.build_embed_and_file()
+            await interaction.message.edit(embeds=embeds, file=file, view=self)
         except Exception as e:
             print(e)
             await interaction.followup.send(

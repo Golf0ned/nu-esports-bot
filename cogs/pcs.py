@@ -1553,11 +1553,20 @@ class ReservationView(discord.ui.View):
                 start_time = res["start_time"]
                 end_time = res["end_time"]
 
-                # Ensure times are in CST
+                # Convert from UTC to CST
+                # Database stores times in UTC as naive datetimes
                 if start_time.tzinfo is None:
-                    start_time = start_time.replace(tzinfo=CENTRAL_TZ)
+                    start_time = start_time.replace(tzinfo=timezone.utc).astimezone(
+                        CENTRAL_TZ
+                    )
+                else:
+                    start_time = start_time.astimezone(CENTRAL_TZ)
                 if end_time.tzinfo is None:
-                    end_time = end_time.replace(tzinfo=CENTRAL_TZ)
+                    end_time = end_time.replace(tzinfo=timezone.utc).astimezone(
+                        CENTRAL_TZ
+                    )
+                else:
+                    end_time = end_time.astimezone(CENTRAL_TZ)
 
                 field_value = (
                     f"**Team:** {res['team']}\n"

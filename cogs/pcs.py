@@ -47,6 +47,33 @@ STATE_TO_NAME = {
 }
 
 
+async def reservation_autocomplete(ctx: discord.AutocompleteContext):
+    """Autocomplete for user's future reservations"""
+    # Format username to match manager field in database
+    user = ctx.interaction.user
+    manager = (
+        f"{user.name}#{user.discriminator}" if user.discriminator != "0" else user.name
+    )
+
+    # Query future reservations for this user
+    sql = """
+        SELECT id, team, start_time
+        FROM reservations
+        WHERE manager = %s AND start_time > NOW()
+        ORDER BY start_time
+    """
+    rows = await db.fetch_all(sql, (manager,))
+
+    choices = []
+    for row in rows:
+        res_id, team, start_time = row
+        # Format: "Team - Mon, Jan 01 @ 2:00 PM"
+        display = f"{team} - {start_time.strftime('%a, %b %d @ %I:%M %p')}"
+        choices.append(discord.OptionChoice(name=display, value=str(res_id)))
+
+    return choices
+
+
 class PCs(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -173,6 +200,71 @@ class PCs(commands.Cog):
             sql, (team, pcs, start_time, end_time, manager, is_prime_time)
         )
         return result[0] if result else None
+
+    async def _send_cancellation_notification(
+        self,
+        team: str,
+        pcs: List[int],
+        start_time: datetime,
+        end_time: datetime,
+        cancelled_by: str,
+        is_prime_time: bool,
+    ):
+        """Send cancellation notification to staff channel"""
+        try:
+            channel_id = config.config["reservations"]["channel"]
+            reservations_channel = self.bot.get_channel(channel_id)
+
+            if not reservations_channel:
+                return
+
+            # Determine room type breakdown
+            back_room_pcs = [pc for pc in pcs if pc in BACK_ROOM_PCS]
+            main_room_pcs = [pc for pc in pcs if pc in MAIN_ROOM_PCS]
+
+            room_info = []
+            if back_room_pcs:
+                room_info.append(
+                    f"Back Room: {', '.join(PCs.format_pc(pc) for pc in sorted(back_room_pcs))}"
+                )
+            if main_room_pcs:
+                room_info.append(
+                    f"Main Room: {', '.join(PCs.format_pc(pc) for pc in sorted(main_room_pcs))}"
+                )
+
+            embed = discord.Embed(
+                title="Reservation Cancelled",
+                color=discord.Color.red(),
+                timestamp=datetime.now(timezone.utc),
+            )
+            embed.add_field(name="Team", value=team, inline=False)
+            embed.add_field(name="Cancelled By", value=cancelled_by, inline=False)
+            embed.add_field(
+                name="Date",
+                value=start_time.strftime("%A, %B %d, %Y"),
+                inline=False,
+            )
+            embed.add_field(
+                name="Time",
+                value=f"{start_time.strftime('%I:%M %p')} - {end_time.strftime('%I:%M %p')} CST",
+                inline=True,
+            )
+            embed.add_field(name="PCs", value="\n".join(room_info), inline=False)
+
+            if is_prime_time:
+                embed.add_field(
+                    name="Note", value="This was a Prime Time reservation", inline=False
+                )
+
+            # Ping the next staff member in rotation
+            if STAFF_LIST:
+                staff_id = STAFF_LIST[self.staff_ping_index % len(STAFF_LIST)]
+                await reservations_channel.send(f"<@{staff_id}>", embed=embed)
+                self.staff_ping_index = (self.staff_ping_index + 1) % len(STAFF_LIST)
+            else:
+                await reservations_channel.send(embed=embed)
+        except Exception as e:
+            print(f"Failed to send cancellation notification: {e}")
 
     async def cog_command_error(self, ctx, error):
         """Handle errors for commands in this cog"""
@@ -997,6 +1089,118 @@ class PCs(commands.Cog):
         # Show modal for date/time input
         modal = ExternalReservationTimeModal(self)
         await ctx.send_modal(modal)
+
+    @commands.slash_command(
+        name="cancel-reservation",
+        description="Cancel one of your PC reservations",
+        guild_ids=[GUILD_ID],
+    )
+    async def cancel_reservation(
+        self,
+        ctx,
+        reservation: discord.Option(
+            str,
+            name="reservation",
+            description="Select a reservation to cancel",
+            autocomplete=reservation_autocomplete,
+            required=True,
+        ),
+    ):
+        # Check if user is a bot dev
+        is_bot_dev = ctx.author.id in BOT_DEV_IDS
+
+        # Check if user has required role (skip if bot dev)
+        if not is_bot_dev:
+            allowed_role_ids = config.config["reservations"]["roles"]
+            user_role_ids = [role.id for role in ctx.author.roles]
+
+            if not any(role_id in allowed_role_ids for role_id in user_role_ids):
+                await ctx.respond(
+                    "You don't have permission to cancel reservations.",
+                    ephemeral=True,
+                )
+                return
+
+        await ctx.defer(ephemeral=True)
+
+        # Parse reservation ID from autocomplete selection
+        try:
+            reservation_id = int(reservation)
+        except ValueError:
+            await ctx.followup.send(
+                "Invalid reservation selection. Please select from the dropdown.",
+                ephemeral=True,
+            )
+            return
+
+        # Fetch reservation details
+        sql = """
+            SELECT id, team, pcs, start_time, end_time, manager, is_prime_time
+            FROM reservations
+            WHERE id = %s
+        """
+        row = await db.fetch_one(sql, (reservation_id,))
+
+        if not row:
+            await ctx.followup.send(
+                "Reservation not found. It may have already been cancelled.",
+                ephemeral=True,
+            )
+            return
+
+        res_id, team, pcs, start_time, end_time, manager, is_prime_time = row
+
+        # Format current user's username
+        user = ctx.author
+        current_user = (
+            f"{user.name}#{user.discriminator}"
+            if user.discriminator != "0"
+            else user.name
+        )
+
+        # Verify ownership (skip if bot dev)
+        if not is_bot_dev and manager != current_user:
+            await ctx.followup.send(
+                "You can only cancel your own reservations.",
+                ephemeral=True,
+            )
+            return
+
+        # Verify reservation is in the future
+        now = datetime.now(CENTRAL_TZ)
+        if start_time <= now:
+            await ctx.followup.send(
+                "Cannot cancel a reservation that has already started or passed.",
+                ephemeral=True,
+            )
+            return
+
+        # Delete the reservation
+        delete_sql = "DELETE FROM reservations WHERE id = %s"
+        await db.perform_one(delete_sql, (reservation_id,))
+
+        # Format PC list for confirmation message
+        pc_list = ", ".join(
+            PCs.format_pc(pc) for pc in sorted(pcs, key=lambda x: (x == 0, x))
+        )
+
+        # Build confirmation message
+        prime_time_note = (
+            "\n\nYour prime time slot has been restored." if is_prime_time else ""
+        )
+        await ctx.followup.send(
+            f"Reservation cancelled successfully.\n\n"
+            f"**Team:** {team}\n"
+            f"**PCs:** {pc_list}\n"
+            f"**Time:** {start_time.strftime('%A, %B %d, %Y %I:%M %p')} - {end_time.strftime('%I:%M %p')} CST"
+            f"{prime_time_note}",
+            ephemeral=True,
+        )
+
+        # Send cancellation notification to staff
+        await self._send_cancellation_notification(
+            team, pcs, start_time, end_time, current_user, is_prime_time
+        )
 
     @staticmethod
     def build_reservation_image(

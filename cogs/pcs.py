@@ -1,3 +1,4 @@
+import asyncio
 import io
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Tuple, List
@@ -525,10 +526,19 @@ class PCs(commands.Cog):
 
     async def fetch_pcs(self) -> Dict:
         timeout = aiohttp.ClientTimeout(total=10)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(PCS_ENDPOINT) as resp:
-                resp.raise_for_status()
-                return await resp.json()
+        max_attempts = 4
+        retry_delay_seconds = 5
+
+        for attempt in range(max_attempts):
+            try:
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.get(PCS_ENDPOINT) as resp:
+                        resp.raise_for_status()
+                        return await resp.json()
+            except Exception:
+                if attempt == max_attempts - 1:
+                    raise
+                await asyncio.sleep(retry_delay_seconds)
 
     @staticmethod
     def normalize_key(key: str) -> str:

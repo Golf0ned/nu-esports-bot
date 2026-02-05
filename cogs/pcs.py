@@ -424,6 +424,9 @@ class PCs(commands.Cog):
         return allocated
 
     async def fetch_pcs(self) -> Dict:
+        return await self.fetch_json_with_retries(PCS_ENDPOINT)
+
+    async def fetch_json_with_retries(self, url: str) -> Dict:
         timeout = aiohttp.ClientTimeout(total=10)
         max_attempts = 4
         retry_delay_seconds = 5
@@ -431,7 +434,7 @@ class PCs(commands.Cog):
         for attempt in range(max_attempts):
             try:
                 async with aiohttp.ClientSession(timeout=timeout) as session:
-                    async with session.get(PCS_ENDPOINT) as resp:
+                    async with session.get(url) as resp:
                         resp.raise_for_status()
                         return await resp.json()
             except Exception:
@@ -808,12 +811,8 @@ class PCs(commands.Cog):
         await ctx.followup.send(embed=embed, file=file, view=view)
 
     async def fetch_reservations(self, date_str: str) -> Dict:
-        timeout = aiohttp.ClientTimeout(total=10)
         url = f"{RESERVATIONS_ENDPOINT}/{date_str}"
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(url) as resp:
-                resp.raise_for_status()
-                return await resp.json()
+        return await self.fetch_json_with_retries(url)
 
     @commands.slash_command(
         name="reserve", description="Reserve PCs for your team", guild_ids=[GUILD_ID]

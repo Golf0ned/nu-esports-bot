@@ -139,6 +139,13 @@ class PCs(commands.Cog):
             return "Desk 000 - Streaming"
         return f"Desk {pc_num:03d}"
 
+    @staticmethod
+    def to_central_time(dt: datetime) -> datetime:
+        """Convert a datetime to Central Time for display/comparison"""
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(CENTRAL_TZ)
+
     async def get_reservations_in_range(
         self, start_time: datetime, end_time: datetime
     ) -> List[Dict]:
@@ -158,8 +165,8 @@ class PCs(commands.Cog):
                     "id": row[0],
                     "team": row[1],
                     "pcs": row[2],
-                    "start_time": row[3],
-                    "end_time": row[4],
+                    "start_time": self.to_central_time(row[3]),
+                    "end_time": self.to_central_time(row[4]),
                     "manager": row[5],
                     "is_prime_time": row[6],
                 }
@@ -937,28 +944,18 @@ class PCs(commands.Cog):
         Find which PCs from a database reservation are NOT yet in GGLeap.
         Returns list of PC numbers that are pending (not in GGLeap).
         """
-        db_start = db_res["start_time"]
-        db_end = db_res["end_time"]
-
-        # Ensure db times are timezone-aware
-        if db_start.tzinfo is None:
-            db_start = db_start.replace(tzinfo=CENTRAL_TZ)
-        if db_end.tzinfo is None:
-            db_end = db_end.replace(tzinfo=CENTRAL_TZ)
+        db_start = self.to_central_time(db_res["start_time"])
+        db_end = self.to_central_time(db_res["end_time"])
 
         # Track which PCs are covered in GGLeap
         covered_pcs = set()
 
         for gg_res in ggleap_reservations:
             gg_desks = set(gg_res.get("machines", []))
-            gg_start = datetime.fromisoformat(gg_res["start_time"])
-            gg_end = datetime.fromisoformat(gg_res["end_time"])
-
-            # Ensure GGLeap times are timezone-aware
-            if gg_start.tzinfo is None:
-                gg_start = gg_start.replace(tzinfo=CENTRAL_TZ)
-            if gg_end.tzinfo is None:
-                gg_end = gg_end.replace(tzinfo=CENTRAL_TZ)
+            gg_start = self.to_central_time(
+                datetime.fromisoformat(gg_res["start_time"])
+            )
+            gg_end = self.to_central_time(datetime.fromisoformat(gg_res["end_time"]))
 
             # Check if times overlap (within 5 minutes tolerance)
             time_tolerance = 300  # 5 minutes in seconds
@@ -1261,8 +1258,10 @@ class PCs(commands.Cog):
         for res in reservations:
             machines = res.get("machines", [])
 
-            start_time = datetime.fromisoformat(res.get("start_time"))
-            end_time = datetime.fromisoformat(res.get("end_time"))
+            start_time = PCs.to_central_time(
+                datetime.fromisoformat(res.get("start_time"))
+            )
+            end_time = PCs.to_central_time(datetime.fromisoformat(res.get("end_time")))
 
             # Mark time slots as reserved for each machine
             for machine in machines:
@@ -1280,14 +1279,8 @@ class PCs(commands.Cog):
         if pending_reservations:
             for res in pending_reservations:
                 pcs = res.get("pcs", [])
-                start_time = res.get("start_time")
-                end_time = res.get("end_time")
-
-                # Ensure times are timezone-aware
-                if start_time.tzinfo is None:
-                    start_time = start_time.replace(tzinfo=CENTRAL_TZ)
-                if end_time.tzinfo is None:
-                    end_time = end_time.replace(tzinfo=CENTRAL_TZ)
+                start_time = PCs.to_central_time(res.get("start_time"))
+                end_time = PCs.to_central_time(res.get("end_time"))
 
                 # Mark time slots as pending for each PC
                 for pc_num in pcs:
@@ -1799,14 +1792,8 @@ class ReservationView(discord.ui.View):
                     PCs.format_pc(pc)
                     for pc in sorted(res["pcs"], key=lambda x: (x == 0, x))
                 )
-                start_time = res["start_time"]
-                end_time = res["end_time"]
-
-                # Ensure times are timezone-aware (database stores Central Time)
-                if start_time.tzinfo is None:
-                    start_time = start_time.replace(tzinfo=CENTRAL_TZ)
-                if end_time.tzinfo is None:
-                    end_time = end_time.replace(tzinfo=CENTRAL_TZ)
+                start_time = PCs.to_central_time(res["start_time"])
+                end_time = PCs.to_central_time(res["end_time"])
 
                 field_value = (
                     f"**Team:** {res['team']}\n"

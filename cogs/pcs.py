@@ -1,6 +1,6 @@
 import asyncio
 import io
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date
 from typing import Dict, Tuple, List
 from zoneinfo import ZoneInfo
 
@@ -145,6 +145,47 @@ class PCs(commands.Cog):
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         return dt.astimezone(CENTRAL_TZ)
+
+    def get_gameroom_hours_for_date(
+        self, target_date: date
+    ) -> Tuple[datetime, datetime] | None:
+        """Return open/close datetimes in Central, or None if closed."""
+        adjusted_hours = config.config["gameroom"].get("adjusted_hours", {})
+        hours = adjusted_hours.get(target_date)
+        if hours is None:
+            hours = adjusted_hours.get(target_date.strftime("%Y-%m-%d"))
+        if hours is None:
+            hours = config.config["gameroom"]["default_hours"][target_date.weekday()]
+
+        if not isinstance(hours, str):
+            return None
+
+        if hours.strip().lower().startswith("closed"):
+            return None
+
+        # Strip annotations like "(Finals Week)"
+        hours = hours.split("(")[0].strip()
+        hours_str = f"{target_date.strftime('%Y-%m-%d')} {hours.replace(' ', '')}"
+        start_time, end_time = self.parse_time_range(hours_str)
+        return start_time, end_time
+
+    def get_next_open_time(self, now: datetime) -> datetime | None:
+        """Find the next opening datetime in Central, if any."""
+        search_days = 14
+        for offset in range(search_days):
+            day = now.date() + timedelta(days=offset)
+            hours = self.get_gameroom_hours_for_date(day)
+            if not hours:
+                continue
+            open_time, close_time = hours
+            if offset == 0:
+                if now < open_time:
+                    return open_time
+                if open_time <= now <= close_time:
+                    return open_time
+                continue
+            return open_time
+        return None
 
     async def get_reservations_in_range(
         self, start_time: datetime, end_time: datetime
@@ -693,6 +734,22 @@ class PCs(commands.Cog):
     @commands.cooldown(1, 300, commands.BucketType.user)
     async def pcs(self, ctx):
         await ctx.defer()
+        now = datetime.now(CENTRAL_TZ)
+        hours = self.get_gameroom_hours_for_date(now.date())
+        if not hours or not (hours[0] <= now <= hours[1]):
+            next_open = self.get_next_open_time(now)
+            if next_open:
+                next_open_text = next_open.strftime("%A, %B %d at %I:%M %p CST")
+                description = f"Check back after we open at {next_open_text}."
+            else:
+                description = "Check back later for updated hours."
+            embed = discord.Embed(
+                title="Game Room is currently closed",
+                description=description,
+                color=discord.Color.from_rgb(78, 42, 132),
+            )
+            await ctx.followup.send(embed=embed)
+            return
         try:
             data = await self.fetch_pcs()
         except Exception as e:

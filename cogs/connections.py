@@ -29,7 +29,6 @@ class CachedPuzzle:
     date: str
     groups: list[Group]
     word_bank: list[str]
-    positions: dict[str, int]
     display_map: dict[str, str]
 
 
@@ -38,6 +37,7 @@ class GameSession:
     date: str
     shuffled_words: list[str]
     solved_group_indexes: set[int]
+    solved_group_order: list[int]
     remaining_words: set[str]
     mistakes: int
     completed: bool
@@ -106,6 +106,7 @@ class Connections(commands.Cog):
                 date=requested_date,
                 shuffled_words=shuffled_words,
                 solved_group_indexes=set(),
+                solved_group_order=[],
                 remaining_words=set(puzzle.word_bank),
                 mistakes=0,
                 completed=False,
@@ -159,30 +160,36 @@ class Connections(commands.Cog):
 
         lock = self.fetch_locks.setdefault(requested_date, asyncio.Lock())
         async with lock:
-            if requested_date in self.puzzle_cache:
-                return self.puzzle_cache[requested_date]
+            try:
+                if requested_date in self.puzzle_cache:
+                    return self.puzzle_cache[requested_date]
 
-            apify_key = self._get_apify_key()
-            if not apify_key:
-                raise ValueError("`APIFY_KEY` is missing from environment and `.env`.")
+                apify_key = self._get_apify_key()
+                if not apify_key:
+                    raise ValueError(
+                        "`APIFY_KEY` is missing from environment and `.env`."
+                    )
 
-            url = (
-                "https://jindrich-bar--nyt-games-api.apify.actor/"
-                f"connections/{requested_date}?token={apify_key}"
-            )
+                url = (
+                    "https://jindrich-bar--nyt-games-api.apify.actor/"
+                    f"connections/{requested_date}?token={apify_key}"
+                )
 
-            timeout = aiohttp.ClientTimeout(total=12)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(url) as response:
-                    if response.status != 200:
-                        raise ValueError(
-                            f"Apify returned status {response.status} for {requested_date}."
-                        )
-                    payload = await response.json()
+                timeout = aiohttp.ClientTimeout(total=12)
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.get(url) as response:
+                        if response.status != 200:
+                            raise ValueError(
+                                f"Apify returned status {response.status} for {requested_date}."
+                            )
+                        payload = await response.json()
 
-            puzzle = self._normalize_payload(payload, requested_date)
-            self.puzzle_cache[requested_date] = puzzle
-            return puzzle
+                puzzle = self._normalize_payload(payload, requested_date)
+                self.puzzle_cache[requested_date] = puzzle
+                return puzzle
+            finally:
+                # Prevent unbounded growth for one-off date keys in long-lived bot processes.
+                self.fetch_locks.pop(requested_date, None)
 
     def _normalize_payload(self, payload: dict, requested_date: str) -> CachedPuzzle:
         if payload.get("status") != "OK":
@@ -198,7 +205,6 @@ class Connections(commands.Cog):
 
         groups: list[Group] = []
         all_words: list[str] = []
-        positions: dict[str, int] = {}
         display_map: dict[str, str] = {}
         seen_positions = set()
 
@@ -227,11 +233,10 @@ class Connections(commands.Cog):
                     raise ValueError("Duplicate card positions in response.")
 
                 normalized = _normalize_word(content)
-                if normalized in positions:
+                if normalized in display_map:
                     raise ValueError("Duplicate card words in response.")
 
                 seen_positions.add(position)
-                positions[normalized] = position
                 display_map[normalized] = content.strip()
                 display_words.append(content.strip())
                 normalized_words.add(normalized)
@@ -257,7 +262,6 @@ class Connections(commands.Cog):
             date=api_date or requested_date,
             groups=groups,
             word_bank=all_words,
-            positions=positions,
             display_map=display_map,
         )
 
@@ -266,10 +270,6 @@ class Connections(commands.Cog):
     ) -> tuple[discord.Embed, discord.File]:
         session = self.user_sessions[(user_id, requested_date)]
         puzzle = self.puzzle_cache[requested_date]
-        solved_lines = [
-            f"• **{puzzle.groups[idx].title}**"
-            for idx in sorted(session.solved_group_indexes)
-        ]
         buffer = self.build_board_image(user_id, requested_date)
         file = discord.File(buffer, filename="connections.png")
 
@@ -278,17 +278,6 @@ class Connections(commands.Cog):
             color=discord.Color.from_rgb(78, 42, 132),
         )
         embed.set_image(url="attachment://connections.png")
-        embed.add_field(name="Mistakes", value=str(session.mistakes), inline=True)
-        embed.add_field(
-            name="Groups Solved",
-            value=str(len(session.solved_group_indexes)),
-            inline=True,
-        )
-        embed.add_field(
-            name="Solved Categories",
-            value="\n".join(solved_lines) if solved_lines else "None yet",
-            inline=False,
-        )
         if session.failed:
             answer_lines = [
                 f"• **{group.title}**: {', '.join(group.display_words)}"
@@ -299,13 +288,7 @@ class Connections(commands.Cog):
                 value="\n".join(answer_lines),
                 inline=False,
             )
-            embed.set_footer(text="Game over: 4 mistakes reached.")
-        elif session.completed:
-            embed.set_footer(text="Puzzle complete.")
-        else:
-            embed.set_footer(
-                text=f"Use dropdowns to submit guesses. Mistakes: {session.mistakes}/4"
-            )
+            embed.set_footer(text="Game over.")
         return embed, file
 
     def _wrap_text(
@@ -315,20 +298,46 @@ class Connections(commands.Cog):
         font: ImageFont.ImageFont,
         width: int,
     ) -> list[str]:
-        words = text.split()
-        if not words:
+        if not text.strip():
             return [""]
-        lines = []
-        current = words[0]
-        for word in words[1:]:
-            trial = f"{current} {word}"
-            box = draw.textbbox((0, 0), trial, font=font)
-            if box[2] - box[0] <= width:
+
+        tokens: list[str] = []
+        for word in text.split():
+            candidate_width = draw.textbbox((0, 0), word, font=font)[2]
+            if candidate_width <= width:
+                tokens.append(word)
+                continue
+
+            # Hard-wrap single long tokens character-by-character.
+            piece = ""
+            for ch in word:
+                trial = piece + ch
+                trial_width = draw.textbbox((0, 0), trial, font=font)[2]
+                if trial_width <= width:
+                    piece = trial
+                else:
+                    if piece:
+                        tokens.append(piece)
+                    piece = ch
+            if piece:
+                tokens.append(piece)
+
+        lines: list[str] = []
+        current = ""
+        for token in tokens:
+            trial = f"{current} {token}".strip()
+            trial_width = draw.textbbox((0, 0), trial, font=font)[2]
+            if trial_width <= width:
                 current = trial
             else:
-                lines.append(current)
-                current = word
-        lines.append(current)
+                if current:
+                    lines.append(current)
+                current = token
+        if current:
+            lines.append(current)
+
+        if not lines:
+            lines.append(text)
         return lines
 
     def _default_font(self, size: int) -> ImageFont.ImageFont:
@@ -343,104 +352,189 @@ class Connections(commands.Cog):
 
         margin = 24
         grid_gap = 14
+        tile_gap = 24
 
         bg_color = (47, 49, 54)
         text_color = (240, 240, 240)
+        dark_text = (20, 20, 20)
         unsolved_color = (72, 75, 82)
         cell_outline = (88, 91, 98)
         group_colors = [
-            (88, 166, 255),  # blue
-            (174, 123, 255),  # purple
-            (246, 211, 101),  # yellow
-            (161, 229, 180),  # green
+            (246, 211, 101),  # yellow (group 1)
+            (161, 229, 180),  # green (group 2)
+            (88, 166, 255),  # blue (group 3)
+            (174, 123, 255),  # purple (group 4)
         ]
 
-        fixed_font = self._default_font(30)
-        line_height = draw_line_height = 34
-        try:
-            line_height = ImageDraw.Draw(Image.new("RGB", (1, 1))).textbbox(
-                (0, 0), "Ag", font=fixed_font
-            )[3]
-        except Exception:
-            line_height = draw_line_height
+        word_font = self._default_font(30)
+        solved_title_font = self._default_font(30)
+        solved_words_font = self._default_font(30)
+        measure_draw = ImageDraw.Draw(Image.new("RGB", (1, 1)))
 
+        # Solve-order grouped rows at top, remaining words in compact grid below.
+        solved_order = [
+            idx
+            for idx in session.solved_group_order
+            if idx in session.solved_group_indexes
+        ]
+        unsolved_words = [
+            w for w in session.shuffled_words if w in session.remaining_words
+        ]
+
+        # Compute tile sizing from current unsolved words (fallback to all words when solved out).
+        measurement_words = (
+            unsolved_words if unsolved_words else list(session.shuffled_words)
+        )
         display_words = [
-            puzzle.display_map.get(word, word) for word in session.shuffled_words
+            puzzle.display_map.get(word, word) for word in measurement_words
         ]
         max_text_width = 0
         for display_word in display_words:
-            try:
-                word_width = ImageDraw.Draw(Image.new("RGB", (1, 1))).textbbox(
-                    (0, 0), display_word, font=fixed_font
-                )[2]
-            except Exception:
-                word_width = 220
+            word_width = measure_draw.textbbox((0, 0), display_word, font=word_font)[2]
             if word_width > max_text_width:
                 max_text_width = word_width
 
-        cell_w = max(160, max_text_width + 28)
-        usable_width = cell_w - 20
-        max_lines = 1
-        measure_draw = ImageDraw.Draw(Image.new("RGB", (1, 1)))
+        cell_w = min(340, max(200, max_text_width + 28))
+        tile_text_width = cell_w - 20
+
+        word_line_height = measure_draw.textbbox((0, 0), "Ag", font=word_font)[3]
+        max_word_lines = 1
         for display_word in display_words:
             wrapped = self._wrap_text(
-                measure_draw, display_word, fixed_font, usable_width
+                measure_draw, display_word, word_font, tile_text_width
             )
-            if len(wrapped) > max_lines:
-                max_lines = len(wrapped)
-        cell_h = max(84, (max_lines * line_height) + ((max_lines - 1) * 4) + 16)
+            if len(wrapped) > max_word_lines:
+                max_word_lines = len(wrapped)
+        cell_h = max(
+            84, (max_word_lines * word_line_height) + ((max_word_lines - 1) * 4) + 16
+        )
 
-        width = (margin * 5) + (cell_w * 4)
-        height = (margin * 2) + (cell_h * 4) + (grid_gap * 3)
+        board_w = (cell_w * 4) + (tile_gap * 3)
+        solved_row_width = board_w
+        solved_text_width = solved_row_width - 24
+        solved_title_line_height = measure_draw.textbbox(
+            (0, 0), "Ag", font=solved_title_font
+        )[3]
+        solved_words_line_height = measure_draw.textbbox(
+            (0, 0), "Ag", font=solved_words_font
+        )[3]
+
+        solved_rows_layout: list[tuple[int, list[str], list[str]]] = []
+        for group_idx in solved_order:
+            group = puzzle.groups[group_idx]
+            title_lines = self._wrap_text(
+                measure_draw,
+                group.title,
+                solved_title_font,
+                solved_text_width,
+            )
+            words_text = ", ".join(group.display_words)
+            words_lines = self._wrap_text(
+                measure_draw,
+                words_text,
+                solved_words_font,
+                solved_text_width,
+            )
+            row_h = (
+                14
+                + (len(title_lines) * solved_title_line_height)
+                + 6
+                + (len(words_lines) * solved_words_line_height)
+                + 14
+            )
+            solved_rows_layout.append((row_h, title_lines, words_lines))
+
+        solved_block_h = sum(row_h for row_h, _, _ in solved_rows_layout)
+        if len(solved_rows_layout) > 1:
+            solved_block_h += grid_gap * (len(solved_rows_layout) - 1)
+
+        unsolved_rows = (len(unsolved_words) + 3) // 4
+        unsolved_block_h = 0
+        if unsolved_rows > 0:
+            unsolved_block_h = (unsolved_rows * cell_h) + (
+                (unsolved_rows - 1) * grid_gap
+            )
+
+        sections_gap = grid_gap if solved_rows_layout and unsolved_rows > 0 else 0
+        width = (margin * 2) + board_w
+        height = (margin * 2) + solved_block_h + sections_gap + unsolved_block_h
+        height = max(height, margin * 2 + cell_h)
 
         img = Image.new("RGB", (width, height), bg_color)
         draw = ImageDraw.Draw(img)
-        board_top = margin
 
-        word_to_group: dict[str, int] = {}
-        for idx, group in enumerate(puzzle.groups):
-            for word in group.words:
-                word_to_group[word] = idx
+        current_y = margin
 
-        for idx, word in enumerate(session.shuffled_words):
+        # Draw solved groups as full-width rows.
+        for group_idx, (row_h, title_lines, words_lines) in zip(
+            solved_order, solved_rows_layout
+        ):
+            x1 = margin
+            y1 = current_y
+            x2 = x1 + solved_row_width
+            y2 = y1 + row_h
+            draw.rounded_rectangle(
+                [x1, y1, x2, y2],
+                radius=12,
+                fill=group_colors[group_idx],
+                outline=cell_outline,
+                width=2,
+            )
+
+            y_text = y1 + 14
+            for line in title_lines:
+                text_w = draw.textbbox((0, 0), line, font=solved_title_font)[2]
+                draw.text(
+                    (x1 + (solved_row_width - text_w) // 2, y_text),
+                    line,
+                    fill=dark_text,
+                    font=solved_title_font,
+                )
+                y_text += solved_title_line_height
+
+            y_text += 6
+            for line in words_lines:
+                text_w = draw.textbbox((0, 0), line, font=solved_words_font)[2]
+                draw.text(
+                    (x1 + (solved_row_width - text_w) // 2, y_text),
+                    line,
+                    fill=dark_text,
+                    font=solved_words_font,
+                )
+                y_text += solved_words_line_height
+
+            current_y = y2 + grid_gap
+
+        # Draw remaining words as compact 4-column grid under solved rows.
+        for idx, word in enumerate(unsolved_words):
             row = idx // 4
             col = idx % 4
-            x1 = margin + col * (cell_w + margin)
-            y1 = board_top + row * (cell_h + grid_gap)
+            x1 = margin + col * (cell_w + tile_gap)
+            y1 = current_y + row * (cell_h + grid_gap)
             x2 = x1 + cell_w
             y2 = y1 + cell_h
 
-            if word in session.remaining_words:
-                fill = unsolved_color
-                word_fill = text_color
-            else:
-                group_idx = word_to_group[word]
-                fill = group_colors[group_idx]
-                word_fill = (20, 20, 20)
-
             draw.rounded_rectangle(
-                [x1, y1, x2, y2], radius=10, fill=fill, outline=cell_outline, width=2
+                [x1, y1, x2, y2],
+                radius=10,
+                fill=unsolved_color,
+                outline=cell_outline,
+                width=2,
             )
 
             display_word = puzzle.display_map.get(word, word)
-            chosen_font = fixed_font
-            chosen_lines = self._wrap_text(
-                draw, display_word, chosen_font, usable_width
-            )
-
-            line_height = draw.textbbox((0, 0), "Ag", font=chosen_font)[3]
-            total_h = len(chosen_lines) * line_height + (len(chosen_lines) - 1) * 4
+            lines = self._wrap_text(draw, display_word, word_font, tile_text_width)
+            total_h = len(lines) * word_line_height + (len(lines) - 1) * 4
             y_text = y1 + (cell_h - total_h) // 2
-            for line in chosen_lines:
-                bbox = draw.textbbox((0, 0), line, font=chosen_font)
-                text_w = bbox[2] - bbox[0]
+            for line in lines:
+                text_w = draw.textbbox((0, 0), line, font=word_font)[2]
                 draw.text(
                     (x1 + (cell_w - text_w) // 2, y_text),
                     line,
-                    fill=word_fill,
-                    font=chosen_font,
+                    fill=text_color,
+                    font=word_font,
                 )
-                y_text += line_height + 4
+                y_text += word_line_height + 4
 
         buffer = io.BytesIO()
         img.save(buffer, format="PNG")
@@ -448,7 +542,7 @@ class Connections(commands.Cog):
         return buffer
 
     async def apply_guess(
-        self, user_id: int, requested_date: str, guess_text: str
+        self, user_id: int, requested_date: str, guess_words: list[str]
     ) -> tuple[bool, str]:
         session_key = (user_id, requested_date)
         if session_key not in self.user_sessions:
@@ -460,14 +554,9 @@ class Connections(commands.Cog):
                 return False, "This game is over (4 mistakes reached)."
             return False, "This puzzle is already complete."
 
-        parts = [
-            _normalize_word(part)
-            for chunk in guess_text.splitlines()
-            for part in chunk.split(",")
-            if part.strip()
-        ]
+        parts = [_normalize_word(word) for word in guess_words if word and word.strip()]
         if len(parts) != 4:
-            return False, "Enter exactly 4 words (comma-separated or one per line)."
+            return False, "Select exactly 4 words."
         if len(set(parts)) != 4:
             return False, "All 4 guessed words must be unique."
 
@@ -485,6 +574,8 @@ class Connections(commands.Cog):
                 continue
             if guessed == group.words:
                 session.solved_group_indexes.add(idx)
+                if idx not in session.solved_group_order:
+                    session.solved_group_order.append(idx)
                 session.remaining_words -= group.words
                 if len(session.solved_group_indexes) == 4:
                     session.completed = True
@@ -504,6 +595,9 @@ class Connections(commands.Cog):
             session.failed = True
             session.completed = True
             session.solved_group_indexes = set(range(len(puzzle.groups)))
+            for idx in range(len(puzzle.groups)):
+                if idx not in session.solved_group_order:
+                    session.solved_group_order.append(idx)
             session.remaining_words.clear()
             answers = "\n".join(
                 f"• **{group.title}**: {', '.join(group.display_words)}"
@@ -636,9 +730,9 @@ class ConnectionsView(discord.ui.View):
             )
             return
 
-        guess_text = "\n".join(word for word in self.selected_words if word is not None)
+        guess_words = [word for word in self.selected_words if word is not None]
         is_correct, message = await self.cog.apply_guess(
-            self.user_id, self.requested_date, guess_text
+            self.user_id, self.requested_date, guess_words
         )
 
         updated_embed, file = self.cog.build_embed_and_file(

@@ -340,14 +340,20 @@ class Connections(commands.Cog):
             lines.append(text)
         return lines
 
-    def _default_font(self, size: int, bold = False) -> ImageFont.ImageFont:
+    def _default_font(self, size: int, bold=False) -> ImageFont.ImageFont:
+        font_dir = Path(__file__).resolve().parent.parent / "assets" / "fonts"
+        font_file = (
+            font_dir / "LibreFranklin-Bold.ttf"
+            if bold
+            else font_dir / "LibreFranklin-Regular.ttf"
+        )
         try:
-            if bold:
-                return ImageFont.truetype("../assets/fonts/LibreFranklin-Bold.ttf", size = size)
-            else:
-                return ImageFont.truetype("../assets/fonts/LibreFranklin-Regular.ttf", size = size)
+            return ImageFont.truetype(str(font_file), size=size)
         except (OSError, TypeError):
-            return ImageFont.load_default()
+            try:
+                return ImageFont.load_default(size=size)
+            except TypeError:
+                return ImageFont.load_default()
 
     def build_board_image(self, user_id: int, requested_date: str) -> io.BytesIO:
         session = self.user_sessions[(user_id, requested_date)]

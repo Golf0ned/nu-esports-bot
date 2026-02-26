@@ -340,11 +340,20 @@ class Connections(commands.Cog):
             lines.append(text)
         return lines
 
-    def _default_font(self, size: int) -> ImageFont.ImageFont:
+    def _default_font(self, size: int, bold=False) -> ImageFont.ImageFont:
+        font_dir = Path(__file__).resolve().parent.parent / "assets" / "fonts"
+        font_file = (
+            font_dir / "LibreFranklin-Bold.ttf"
+            if bold
+            else font_dir / "LibreFranklin-Regular.ttf"
+        )
         try:
-            return ImageFont.load_default(size=size)
-        except TypeError:
-            return ImageFont.load_default()
+            return ImageFont.truetype(str(font_file), size=size)
+        except (OSError, TypeError):
+            try:
+                return ImageFont.load_default(size=size)
+            except TypeError:
+                return ImageFont.load_default()
 
     def build_board_image(self, user_id: int, requested_date: str) -> io.BytesIO:
         session = self.user_sessions[(user_id, requested_date)]
@@ -366,8 +375,8 @@ class Connections(commands.Cog):
             (174, 123, 255),  # purple (group 4)
         ]
 
-        word_font = self._default_font(30)
-        solved_title_font = self._default_font(30)
+        word_font = self._default_font(30, bold=True)
+        solved_title_font = self._default_font(30, bold=True)
         solved_words_font = self._default_font(30)
         measure_draw = ImageDraw.Draw(Image.new("RGB", (1, 1)))
 

@@ -621,6 +621,8 @@ class PCs(commands.Cog):
         # Returns (grid_text, id_to_state)
         # Filter out SAIT TEST machine, Desk 14, Desk 15, and Streaming
         def should_include(name: str) -> bool:
+            if name.lower() in ["stream-pc", "tst-sait"]:
+                return False
             if name.startswith("SAIT TEST"):
                 return False
             # Check if it's Desk 14, 15, or Streaming (Desk 000)

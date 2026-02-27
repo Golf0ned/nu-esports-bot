@@ -79,14 +79,12 @@ docker-compose up
 
 Running the bot locally requires a few additional steps.
 
-Make sure you have [Python 3.10+](https://www.python.org/downloads/) installed.
-
-From here, make and activate a virtual environment with your favorite tool ([venv](https://docs.python.org/3/library/venv.html), [conda](https://anaconda.org/anaconda/conda), etc.).
+Make sure you have [Python 3.10+](https://www.python.org/downloads/) and [uv](https://docs.astral.sh/uv/) installed.
 
 Then, install the required packages with:
 
 ```bash
-pip install -r requirements.txt
+uv sync
 ```
 
 Additionally, you will also need a Postgres database to connect to. There are multiple ways to set this up:
@@ -96,6 +94,12 @@ Additionally, you will also need a Postgres database to connect to. There are mu
 - Use a cloud provider of your choice ([AWS](https://aws.amazon.com/rds/postgresql/), [DigitalOcean](https://www.digitalocean.com/products/managed-databases-postgresql), [Railway](https://docs.railway.com/guides/postgresql), etc.)
 
 After you have Postgres up and running, modify `secrets.yaml` (and/or `compose.yaml`) to point to it -- the defaults are set up for Docker Compose.
+
+Run the bot with:
+
+```bash
+uv run bot.py
+```
 
 ## Contributing
 

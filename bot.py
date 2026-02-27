@@ -20,7 +20,6 @@ cogs_list = [
     "points",
     "teams",
     "valorant",
-    "pcs",
     "game",
     "connections",
 ]

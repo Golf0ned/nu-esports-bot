@@ -38,6 +38,7 @@ class GameSession:
     shuffled_words: list[str]
     solved_group_indexes: set[int]
     solved_group_order: list[int]
+    guesses: list[set[str]]
     remaining_words: set[str]
     mistakes: int
     completed: bool
@@ -107,6 +108,7 @@ class Connections(commands.Cog):
                 shuffled_words=shuffled_words,
                 solved_group_indexes=set(),
                 solved_group_order=[],
+                guesses=[],
                 remaining_words=set(puzzle.word_bank),
                 mistakes=0,
                 completed=False,
@@ -135,23 +137,9 @@ class Connections(commands.Cog):
             return None
 
     def _get_apify_key(self) -> str | None:
-        env_value = os.getenv("APIFY_KEY")
-        if env_value:
-            return env_value.strip()
-
-        env_path = Path(".env")
-        if not env_path.exists():
-            return None
-
-        for line in env_path.read_text().splitlines():
-            stripped = line.strip()
-            if not stripped or stripped.startswith("#"):
-                continue
-            if "=" not in stripped:
-                continue
-            key, value = stripped.split("=", 1)
-            if key.strip() == "APIFY_KEY":
-                return value.strip()
+        key = config.secrets["apify"]["key"]
+        if key:
+            return key
         return None
 
     async def get_or_fetch_puzzle(self, requested_date: str) -> CachedPuzzle:
@@ -167,7 +155,7 @@ class Connections(commands.Cog):
                 apify_key = self._get_apify_key()
                 if not apify_key:
                     raise ValueError(
-                        "`APIFY_KEY` is missing from environment and `.env`."
+                        "`apify:key` is missing from `secrets.yaml`."
                     )
 
                 url = (
@@ -369,10 +357,10 @@ class Connections(commands.Cog):
         unsolved_color = (72, 75, 82)
         cell_outline = (88, 91, 98)
         group_colors = [
-            (246, 211, 101),  # yellow (group 1)
-            (161, 229, 180),  # green (group 2)
-            (88, 166, 255),  # blue (group 3)
-            (174, 123, 255),  # purple (group 4)
+            (249, 223, 109),  # yellow (group 1)
+            (160, 195, 90),  # green (group 2)
+            (176, 196, 239),  # blue (group 3)
+            (186, 129, 197),  # purple (group 4)
         ]
 
         word_font = self._default_font(30, bold=True)
@@ -578,6 +566,12 @@ class Connections(commands.Cog):
 
         puzzle = self.puzzle_cache[requested_date]
         guessed = set(parts)
+
+        if guessed in session.guesses:
+            return False, f"Already guessed. Mistakes {session.mistakes}/4"
+        
+        session.guesses.append(guessed)
+
         for idx, group in enumerate(puzzle.groups):
             if idx in session.solved_group_indexes:
                 continue

@@ -739,20 +739,24 @@ class PCs(commands.Cog):
             "Off": (67, 73, 82),
         }
 
-        try:
-            regular_font = ImageFont.truetype(
-                os.path.join("assets", "fonts", "LibreFranklin-Regular.ttf"), 20
-            )
-            bold_font = ImageFont.truetype(
-                os.path.join("assets", "fonts", "LibreFranklin-Bold.ttf"), 20
-            )
-            warning_font = ImageFont.truetype(
-                os.path.join("assets", "fonts", "LibreFranklin-Regular.ttf"), 18
-            )
-        except Exception:
-            regular_font = ImageFont.load_default()
-            bold_font = ImageFont.load_default()
-            warning_font = ImageFont.load_default()
+        def load_font(path: str, size: int) -> ImageFont.ImageFont:
+            try:
+                return ImageFont.truetype(path, size)
+            except Exception:
+                try:
+                    return ImageFont.load_default(size=size)
+                except TypeError:
+                    return ImageFont.load_default()
+
+        regular_font = load_font(
+            os.path.join("assets", "fonts", "LibreFranklin-Regular.ttf"), 24
+        )
+        bold_font = load_font(
+            os.path.join("assets", "fonts", "LibreFranklin-Bold.ttf"), 24
+        )
+        warning_font = load_font(
+            os.path.join("assets", "fonts", "LibreFranklin-Regular.ttf"), 20
+        )
 
         if not entries:
             img = Image.new("RGB", (420, 80), bg_color)
@@ -766,30 +770,35 @@ class PCs(commands.Cog):
         probe_img = Image.new("RGB", (1, 1), bg_color)
         probe_draw = ImageDraw.Draw(probe_img)
 
-        def text_size(text: str, font: ImageFont.FreeTypeFont) -> Tuple[int, int]:
+        def text_size(text: str, font: ImageFont.ImageFont) -> Tuple[int, int]:
             left, top, right, bottom = probe_draw.textbbox((0, 0), text, font=font)
             return right - left, bottom - top
 
-        square_size = 24
-        text_gap = 10
+        square_size = 26
+        square_gap = 10
+        text_square_gap = 14
         warning_gap = 8
-        row_height = 42
-        side_padding = 20
-        top_padding = 16
-        bottom_padding = 16
-        col_gutter = 42
+        row_height = 48
+        side_padding = 24
+        top_padding = 18
+        bottom_padding = 18
 
-        def measure_entry(entry: Dict) -> int:
-            main_font = bold_font if entry["should_bold"] else regular_font
+        def build_text_parts(entry: Dict) -> Tuple[str, str]:
             if entry["state"] == "ReadyForUser":
-                main_text = f"`{entry['short']}`"
+                main_text = f"{entry['short']}"
             else:
-                main_text = f"`{entry['short']}` {entry['hours']}h {entry['minutes']}m"
-            main_w, _ = text_size(main_text, main_font)
-
-            total = square_size + text_gap + main_w
+                main_text = f"{entry['short']} {entry['hours']}h {entry['minutes']}m"
+            warning_text = ""
             if entry["reserved_in"] is not None:
                 warning_text = f"Reserved in {entry['reserved_in']}m"
+            return main_text, warning_text
+
+        def measure_text(entry: Dict) -> int:
+            main_text, warning_text = build_text_parts(entry)
+            main_font = bold_font if entry["should_bold"] else regular_font
+            main_w, _ = text_size(main_text, main_font)
+            total = main_w
+            if warning_text:
                 warning_w, _ = text_size(warning_text, warning_font)
                 total += warning_gap + warning_w
             return total
@@ -797,56 +806,90 @@ class PCs(commands.Cog):
         left_entries = entries[:columns]
         right_entries = entries[columns : columns * 2]
         max_rows = max(len(left_entries), len(right_entries))
-        left_col_width = max((measure_entry(e) for e in left_entries), default=0)
-        right_col_width = max((measure_entry(e) for e in right_entries), default=0)
+        left_text_width = max((measure_text(e) for e in left_entries), default=0)
+        right_text_width = max((measure_text(e) for e in right_entries), default=0)
+        center_cluster_width = (square_size * 2) + square_gap
 
-        width = side_padding * 2 + left_col_width
-        if right_entries:
-            width += col_gutter + right_col_width
+        content_width = (
+            left_text_width
+            + text_square_gap
+            + center_cluster_width
+            + text_square_gap
+            + right_text_width
+        )
+        width = max(720, side_padding * 2 + content_width)
         height = top_padding + (row_height * max_rows) + bottom_padding
 
         img = Image.new("RGB", (max(width, 420), max(height, 80)), bg_color)
         draw = ImageDraw.Draw(img)
 
-        def draw_entry(entry: Dict, x: int, y: int):
-            state = entry["state"]
-            color = state_to_color.get(state, (220, 221, 222))
+        center_x = width // 2
+        squares_x = center_x - (center_cluster_width // 2)
+        left_square_x = squares_x
+        right_square_x = squares_x + square_size + square_gap
 
-            square_y = y + (row_height - square_size) // 2
-            draw.rounded_rectangle(
-                [x, square_y, x + square_size, square_y + square_size],
-                radius=4,
-                fill=color,
-            )
-
-            text_x = x + square_size + text_gap
+        def draw_text(entry: Dict, left_anchor_x: int, y: int, align_right: bool):
             main_font = bold_font if entry["should_bold"] else regular_font
-            if state == "ReadyForUser":
-                main_text = f"`{entry['short']}`"
-            else:
-                main_text = f"`{entry['short']}` {entry['hours']}h {entry['minutes']}m"
-
-            _, main_h = text_size(main_text, main_font)
+            main_text, warning_text = build_text_parts(entry)
+            main_w, main_h = text_size(main_text, main_font)
             text_y = y + (row_height - main_h) // 2
-            draw.text((text_x, text_y), main_text, fill=text_color, font=main_font)
 
-            if entry["reserved_in"] is not None:
-                main_w, _ = text_size(main_text, main_font)
-                warning_text = f"Reserved in {entry['reserved_in']}m"
+            if align_right:
+                main_x = left_anchor_x - main_w
+            else:
+                main_x = left_anchor_x
+
+            draw.text((main_x, text_y), main_text, fill=text_color, font=main_font)
+
+            if warning_text:
+                warning_x = main_x + main_w + warning_gap
                 draw.text(
-                    (text_x + main_w + warning_gap, text_y),
+                    (warning_x, text_y),
                     warning_text,
                     fill=warning_color,
                     font=warning_font,
                 )
 
-        right_x = side_padding + left_col_width + col_gutter
         for i in range(max_rows):
             y = top_padding + (i * row_height)
+
             if i < len(left_entries):
-                draw_entry(left_entries[i], side_padding, y)
+                draw_text(left_entries[i], left_square_x - text_square_gap, y, True)
             if i < len(right_entries):
-                draw_entry(right_entries[i], right_x, y)
+                draw_text(
+                    right_entries[i],
+                    right_square_x + square_size + text_square_gap,
+                    y,
+                    False,
+                )
+
+            square_y = y + (row_height - square_size) // 2
+            if i < len(left_entries):
+                left_state = left_entries[i]["state"]
+                left_color = state_to_color.get(left_state, (220, 221, 222))
+                draw.rounded_rectangle(
+                    [
+                        left_square_x,
+                        square_y,
+                        left_square_x + square_size,
+                        square_y + square_size,
+                    ],
+                    radius=4,
+                    fill=left_color,
+                )
+            if i < len(right_entries):
+                right_state = right_entries[i]["state"]
+                right_color = state_to_color.get(right_state, (220, 221, 222))
+                draw.rounded_rectangle(
+                    [
+                        right_square_x,
+                        square_y,
+                        right_square_x + square_size,
+                        square_y + square_size,
+                    ],
+                    radius=4,
+                    fill=right_color,
+                )
 
         buffer = io.BytesIO()
         img.save(buffer, format="PNG")

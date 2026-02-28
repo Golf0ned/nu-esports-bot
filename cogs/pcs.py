@@ -1,5 +1,6 @@
 import asyncio
 import io
+import os
 from datetime import datetime, timedelta, timezone, date
 from typing import Dict, Tuple, List
 from zoneinfo import ZoneInfo
@@ -615,33 +616,46 @@ class PCs(commands.Cog):
         return (10**9, name)
 
     @staticmethod
-    def build_grid(
-        data: Dict, reservations: List[Dict] = None, columns: int = 5
-    ) -> Tuple[str, Dict[str, str]]:
-        # Returns (grid_text, id_to_state)
-        # Filter out SAIT TEST machine, Desk 14, Desk 15, and Streaming
+    def build_pcs_entries(
+        data: Dict, reservations: List[Dict] = None
+    ) -> Tuple[List[Dict], Dict[str, str]]:
+        """Build normalized display entries for /pcs text and image rendering."""
+
         def should_include(name: str) -> bool:
             if name.lower() in ["stream-pc", "tst-sait"]:
                 return False
             if name.startswith("SAIT TEST"):
                 return False
-            # Check if it's Desk 14, 15, or Streaming (Desk 000)
             if name.lower().startswith("desk "):
                 remainder = name[5:].strip()
                 digits = "".join(ch for ch in remainder if ch.isdigit())
                 if digits:
                     desk_num = int(digits)
-                    if desk_num in [0, 14, 15]:  # 0 is Streaming
+                    if desk_num in [0, 14, 15]:
                         return False
             return True
 
-        filtered_data = {k: v for k, v in data.items() if should_include(k)}
+        normalized_data: Dict[str, Dict] = {}
+        if isinstance(data, list):
+            for item in data:
+                if not isinstance(item, dict):
+                    continue
+                name = item.get("name") or item.get("Name")
+                if not isinstance(name, str):
+                    continue
+                normalized_data[name] = {
+                    "state": item.get("state") or item.get("State") or "Unknown",
+                    "uptime": item.get("uptime") or item.get("Uptime") or {},
+                    "user_uuid": item.get("user_uuid", item.get("UserUuid")),
+                }
+        elif isinstance(data, dict):
+            normalized_data = data
+
+        filtered_data = {k: v for k, v in normalized_data.items() if should_include(k)}
         items = sorted(
             filtered_data.items(), key=lambda kv: PCs.extract_sort_key(kv[0])
         )
 
-        # Build upcoming reservations map (desk -> minutes until reservation)
-        # and currently reserved desks
         upcoming_reservations = {}
         currently_reserved = set()
         if reservations:
@@ -658,13 +672,11 @@ class PCs(commands.Cog):
                 start_time = datetime.fromisoformat(start_time_str)
                 end_time = datetime.fromisoformat(end_time_str)
 
-                # Check if reservation is currently active
                 if start_time <= now <= end_time:
                     for machine in machines:
                         currently_reserved.add(machine)
 
-                # Check if reservation starts soon
-                time_diff = (start_time - now).total_seconds() / 60  # minutes
+                time_diff = (start_time - now).total_seconds() / 60
                 if 0 < time_diff <= THRESHOLD_MINUTES:
                     for machine in machines:
                         if (
@@ -674,31 +686,25 @@ class PCs(commands.Cog):
                             upcoming_reservations[machine] = int(time_diff)
 
         id_to_state: Dict[str, str] = {}
-        cells = []
+        entries: List[Dict] = []
         for name, info in items:
             state = info.get("state", "Unknown")
             id_to_state[name] = state
-            emoji = STATE_TO_EMOJI.get(state, ":white_large_square:")
 
-            # Get uptime
             uptime = info.get("uptime", {})
             hours = uptime.get("hours", 0)
             minutes = uptime.get("minutes", 0)
 
-            # Show short id for readability; prefer the numeric portion if available
             short = name
             if name.lower().startswith("desk "):
                 remainder = name[5:].strip()
                 digits = "".join(ch for ch in remainder if ch.isdigit())
                 if digits:
-                    # Map Desk 000 to "Streaming"
                     if int(digits) == 0:
                         short = "Streaming"
                     else:
                         short = digits.zfill(3)
 
-            # Check if this PC should be highlighted (can be kicked off)
-            # Criteria: uptime > 2 hours AND not currently in a reserved block
             total_minutes = (hours * 60) + minutes
             should_bold = (
                 total_minutes > 120
@@ -706,27 +712,193 @@ class PCs(commands.Cog):
                 and state != "ReadyForUser"
             )
 
-            # Build base cell text
+            entries.append(
+                {
+                    "name": name,
+                    "state": state,
+                    "short": short,
+                    "hours": hours,
+                    "minutes": minutes,
+                    "should_bold": should_bold,
+                    "reserved_in": upcoming_reservations.get(name),
+                }
+            )
+
+        return entries, id_to_state
+
+    @staticmethod
+    def build_pcs_grid_image(entries: List[Dict], columns: int = 5) -> io.BytesIO:
+        """Render a two-column PC status grid image for /pcs."""
+        bg_color = (47, 49, 54)
+        text_color = (220, 221, 222)
+        warning_color = (250, 166, 26)
+        state_to_color = {
+            "ReadyForUser": (87, 242, 135),
+            "UserLoggedIn": (237, 66, 69),
+            "AdminMode": (237, 66, 69),
+            "Off": (67, 73, 82),
+        }
+
+        try:
+            regular_font = ImageFont.truetype(
+                os.path.join("assets", "fonts", "LibreFranklin-Regular.ttf"), 20
+            )
+            bold_font = ImageFont.truetype(
+                os.path.join("assets", "fonts", "LibreFranklin-Bold.ttf"), 20
+            )
+            warning_font = ImageFont.truetype(
+                os.path.join("assets", "fonts", "LibreFranklin-Regular.ttf"), 18
+            )
+        except Exception:
+            regular_font = ImageFont.load_default()
+            bold_font = ImageFont.load_default()
+            warning_font = ImageFont.load_default()
+
+        if not entries:
+            img = Image.new("RGB", (420, 80), bg_color)
+            draw = ImageDraw.Draw(img)
+            draw.text((20, 28), "No PCs found.", fill=text_color, font=regular_font)
+            buffer = io.BytesIO()
+            img.save(buffer, format="PNG")
+            buffer.seek(0)
+            return buffer
+
+        probe_img = Image.new("RGB", (1, 1), bg_color)
+        probe_draw = ImageDraw.Draw(probe_img)
+
+        def text_size(text: str, font: ImageFont.FreeTypeFont) -> Tuple[int, int]:
+            left, top, right, bottom = probe_draw.textbbox((0, 0), text, font=font)
+            return right - left, bottom - top
+
+        square_size = 24
+        text_gap = 10
+        warning_gap = 8
+        row_height = 42
+        side_padding = 20
+        top_padding = 16
+        bottom_padding = 16
+        col_gutter = 42
+
+        def measure_entry(entry: Dict) -> int:
+            main_font = bold_font if entry["should_bold"] else regular_font
+            if entry["state"] == "ReadyForUser":
+                main_text = f"`{entry['short']}`"
+            else:
+                main_text = f"`{entry['short']}` {entry['hours']}h {entry['minutes']}m"
+            main_w, _ = text_size(main_text, main_font)
+
+            total = square_size + text_gap + main_w
+            if entry["reserved_in"] is not None:
+                warning_text = f"Reserved in {entry['reserved_in']}m"
+                warning_w, _ = text_size(warning_text, warning_font)
+                total += warning_gap + warning_w
+            return total
+
+        left_entries = entries[:columns]
+        right_entries = entries[columns : columns * 2]
+        max_rows = max(len(left_entries), len(right_entries))
+        left_col_width = max((measure_entry(e) for e in left_entries), default=0)
+        right_col_width = max((measure_entry(e) for e in right_entries), default=0)
+
+        width = side_padding * 2 + left_col_width
+        if right_entries:
+            width += col_gutter + right_col_width
+        height = top_padding + (row_height * max_rows) + bottom_padding
+
+        img = Image.new("RGB", (max(width, 420), max(height, 80)), bg_color)
+        draw = ImageDraw.Draw(img)
+
+        def draw_entry(entry: Dict, x: int, y: int):
+            state = entry["state"]
+            color = state_to_color.get(state, (220, 221, 222))
+
+            square_y = y + (row_height - square_size) // 2
+            draw.rounded_rectangle(
+                [x, square_y, x + square_size, square_y + square_size],
+                radius=4,
+                fill=color,
+            )
+
+            text_x = x + square_size + text_gap
+            main_font = bold_font if entry["should_bold"] else regular_font
+            if state == "ReadyForUser":
+                main_text = f"`{entry['short']}`"
+            else:
+                main_text = f"`{entry['short']}` {entry['hours']}h {entry['minutes']}m"
+
+            _, main_h = text_size(main_text, main_font)
+            text_y = y + (row_height - main_h) // 2
+            draw.text((text_x, text_y), main_text, fill=text_color, font=main_font)
+
+            if entry["reserved_in"] is not None:
+                main_w, _ = text_size(main_text, main_font)
+                warning_text = f"Reserved in {entry['reserved_in']}m"
+                draw.text(
+                    (text_x + main_w + warning_gap, text_y),
+                    warning_text,
+                    fill=warning_color,
+                    font=warning_font,
+                )
+
+        right_x = side_padding + left_col_width + col_gutter
+        for i in range(max_rows):
+            y = top_padding + (i * row_height)
+            if i < len(left_entries):
+                draw_entry(left_entries[i], side_padding, y)
+            if i < len(right_entries):
+                draw_entry(right_entries[i], right_x, y)
+
+        buffer = io.BytesIO()
+        img.save(buffer, format="PNG")
+        buffer.seek(0)
+        return buffer
+
+    @staticmethod
+    def build_grid(
+        data: Dict, reservations: List[Dict] = None, columns: int = 5
+    ) -> Tuple[str, Dict[str, str]]:
+        entries, id_to_state = PCs.build_pcs_entries(data, reservations)
+        cells = []
+        for entry in entries:
+            state = entry["state"]
+            emoji = STATE_TO_EMOJI.get(state, ":white_large_square:")
+            short = entry["short"]
+            hours = entry["hours"]
+            minutes = entry["minutes"]
+
             if state == "ReadyForUser":
                 cell_text = f"{emoji} `{short}`"
             else:
                 uptime_text = f"{hours}h {minutes}m"
-                if should_bold:
+                if entry["should_bold"]:
                     cell_text = f"{emoji} **`{short}` {uptime_text}**"
                 else:
                     cell_text = f"{emoji} `{short}` {uptime_text}"
 
-            # Add upcoming reservation warning if applicable
-            if name in upcoming_reservations:
-                minutes_until = upcoming_reservations[name]
-                cell_text += f" *Reserved in {minutes_until}m"
+            if entry["reserved_in"] is not None:
+                cell_text += f" *Reserved in {entry['reserved_in']}m"
 
             cells.append(cell_text)
 
-        # Build rows
+        # Build two-column rows: first 5 on the left, next 5 on the right.
+        # Align right-column start based on the longest left-column string.
         rows = []
-        for i in range(0, len(cells), columns):
-            rows.append("\n".join(cells[i : i + columns]))
+        left_cells = cells[:columns]
+        right_cells = cells[columns : columns * 2]
+        max_rows = max(len(left_cells), len(right_cells))
+        max_left_len = max((len(cell) for cell in left_cells), default=0)
+
+        for i in range(max_rows):
+            left = left_cells[i] if i < len(left_cells) else ""
+            right = right_cells[i] if i < len(right_cells) else ""
+
+            if left and right:
+                padding = " " * (max_left_len - len(left) + 1)
+                rows.append(f"{left}{padding}{right}")
+            elif left:
+                rows.append(left)
+            elif right:
+                rows.append(right)
 
         return ("\n".join(rows) if rows else "No PCs found.", id_to_state)
 
@@ -774,7 +946,7 @@ class PCs(commands.Cog):
             print(f"Failed to fetch reservations: {e}")
             reservations = []
 
-        grid, id_to_state = self.build_grid(data, reservations)
+        entries, id_to_state = self.build_pcs_entries(data, reservations)
 
         # Tally counts by state, combining AdminMode into UserLoggedIn
         counts: Dict[str, int] = {}
@@ -803,10 +975,17 @@ class PCs(commands.Cog):
             color=discord.Color.from_rgb(78, 42, 132),
         )
         embed.add_field(name="Legend", value=legend or "No data", inline=False)
-        embed.add_field(name="Grid", value=grid, inline=False)
         embed.set_footer(text="Bold text = Can be kicked off (>2hrs, not reserved)")
-
-        await ctx.followup.send(embed=embed)
+        try:
+            grid_image = self.build_pcs_grid_image(entries)
+            file = discord.File(grid_image, filename="pcs.png")
+            embed.set_image(url="attachment://pcs.png")
+            await ctx.followup.send(embed=embed, file=file)
+        except Exception as e:
+            print(f"Failed to render /pcs image, falling back to text: {e}")
+            grid, _ = self.build_grid(data, reservations)
+            embed.add_field(name="Grid", value=grid, inline=False)
+            await ctx.followup.send(embed=embed)
 
     @commands.slash_command(
         name="pc",
@@ -833,6 +1012,22 @@ class PCs(commands.Cog):
             )
             return
 
+        normalized_data: Dict[str, Dict] = {}
+        if isinstance(data, list):
+            for item in data:
+                if not isinstance(item, dict):
+                    continue
+                name = item.get("name") or item.get("Name")
+                if not isinstance(name, str):
+                    continue
+                normalized_data[name] = {
+                    "state": item.get("state") or item.get("State") or "Unknown",
+                    "uptime": item.get("uptime") or item.get("Uptime") or {},
+                    "user_uuid": item.get("user_uuid", item.get("UserUuid")),
+                }
+        elif isinstance(data, dict):
+            normalized_data = data
+
         # Fetch reservations to check if PC is currently reserved
         try:
             today = datetime.now(CENTRAL_TZ)
@@ -846,7 +1041,7 @@ class PCs(commands.Cog):
         # Attempt exact and case-insensitive matches
         target = None
         norm = self.normalize_key(pc_number)
-        for key, value in data.items():
+        for key, value in normalized_data.items():
             if self.normalize_key(key) == norm:
                 target = (key, value)
                 break
@@ -855,7 +1050,7 @@ class PCs(commands.Cog):
             digits = "".join(ch for ch in pc_number if ch.isdigit())
             if digits:
                 desired = f"desk {int(digits):03d}"
-                for key, value in data.items():
+                for key, value in normalized_data.items():
                     if self.normalize_key(key).startswith(desired):
                         target = (key, value)
                         break

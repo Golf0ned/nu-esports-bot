@@ -749,13 +749,16 @@ class PCs(commands.Cog):
                     return ImageFont.load_default()
 
         regular_font = load_font(
-            os.path.join("assets", "fonts", "LibreFranklin-Regular.ttf"), 24
+            os.path.join("assets", "fonts", "LibreFranklin-Regular.ttf"), 20
         )
         bold_font = load_font(
-            os.path.join("assets", "fonts", "LibreFranklin-Bold.ttf"), 24
+            os.path.join("assets", "fonts", "LibreFranklin-Bold.ttf"), 20
         )
         warning_font = load_font(
-            os.path.join("assets", "fonts", "LibreFranklin-Regular.ttf"), 20
+            os.path.join("assets", "fonts", "LibreFranklin-Regular.ttf"), 16
+        )
+        square_font = load_font(
+            os.path.join("assets", "fonts", "LibreFranklin-Bold.ttf"), 16
         )
 
         if not entries:
@@ -774,20 +777,20 @@ class PCs(commands.Cog):
             left, top, right, bottom = probe_draw.textbbox((0, 0), text, font=font)
             return right - left, bottom - top
 
-        square_size = 26
-        square_gap = 10
-        text_square_gap = 14
-        warning_gap = 8
-        row_height = 48
-        side_padding = 24
-        top_padding = 18
-        bottom_padding = 18
+        square_size = 24
+        square_gap = 8
+        text_square_gap = 8
+        warning_gap = 6
+        row_height = 42
+        side_padding = 8
+        top_padding = 14
+        bottom_padding = 14
 
         def build_text_parts(entry: Dict) -> Tuple[str, str]:
             if entry["state"] == "ReadyForUser":
-                main_text = f"{entry['short']}"
+                main_text = ""
             else:
-                main_text = f"{entry['short']} {entry['hours']}h {entry['minutes']}m"
+                main_text = f"{entry['hours']}h {entry['minutes']}m"
             warning_text = ""
             if entry["reserved_in"] is not None:
                 warning_text = f"Reserved in {entry['reserved_in']}m"
@@ -796,11 +799,13 @@ class PCs(commands.Cog):
         def measure_text(entry: Dict) -> int:
             main_text, warning_text = build_text_parts(entry)
             main_font = bold_font if entry["should_bold"] else regular_font
-            main_w, _ = text_size(main_text, main_font)
+            main_w = 0
+            if main_text:
+                main_w, _ = text_size(main_text, main_font)
             total = main_w
             if warning_text:
                 warning_w, _ = text_size(warning_text, warning_font)
-                total += warning_gap + warning_w
+                total += warning_w if main_w == 0 else warning_gap + warning_w
             return total
 
         left_entries = entries[:columns]
@@ -817,10 +822,10 @@ class PCs(commands.Cog):
             + text_square_gap
             + right_text_width
         )
-        width = max(720, side_padding * 2 + content_width)
+        width = side_padding * 2 + content_width
         height = top_padding + (row_height * max_rows) + bottom_padding
 
-        img = Image.new("RGB", (max(width, 420), max(height, 80)), bg_color)
+        img = Image.new("RGB", (width, height), bg_color)
         draw = ImageDraw.Draw(img)
 
         center_x = width // 2
@@ -831,7 +836,12 @@ class PCs(commands.Cog):
         def draw_text(entry: Dict, left_anchor_x: int, y: int, align_right: bool):
             main_font = bold_font if entry["should_bold"] else regular_font
             main_text, warning_text = build_text_parts(entry)
-            main_w, main_h = text_size(main_text, main_font)
+            main_w = 0
+            main_h = 0
+            if main_text:
+                main_w, main_h = text_size(main_text, main_font)
+            else:
+                _, main_h = text_size("Ag", main_font)
             text_y = y + (row_height - main_h) // 2
 
             if align_right:
@@ -839,10 +849,11 @@ class PCs(commands.Cog):
             else:
                 main_x = left_anchor_x
 
-            draw.text((main_x, text_y), main_text, fill=text_color, font=main_font)
+            if main_text:
+                draw.text((main_x, text_y), main_text, fill=text_color, font=main_font)
 
             if warning_text:
-                warning_x = main_x + main_w + warning_gap
+                warning_x = main_x + main_w + (0 if main_w == 0 else warning_gap)
                 draw.text(
                     (warning_x, text_y),
                     warning_text,
@@ -877,6 +888,17 @@ class PCs(commands.Cog):
                     radius=4,
                     fill=left_color,
                 )
+                left_label = str(int(left_entries[i]["short"]))
+                l_left, l_top, l_right, l_bottom = draw.textbbox(
+                    (0, 0), left_label, font=square_font
+                )
+                label_w = l_right - l_left
+                label_h = l_bottom - l_top
+                label_x = left_square_x + (square_size - label_w) // 2 - l_left
+                label_y = square_y + (square_size - label_h) // 2 - l_top
+                draw.text(
+                    (label_x, label_y), left_label, fill=(34, 34, 34), font=square_font
+                )
             if i < len(right_entries):
                 right_state = right_entries[i]["state"]
                 right_color = state_to_color.get(right_state, (220, 221, 222))
@@ -889,6 +911,20 @@ class PCs(commands.Cog):
                     ],
                     radius=4,
                     fill=right_color,
+                )
+                right_label = str(int(right_entries[i]["short"]))
+                r_left, r_top, r_right, r_bottom = draw.textbbox(
+                    (0, 0), right_label, font=square_font
+                )
+                label_w = r_right - r_left
+                label_h = r_bottom - r_top
+                label_x = right_square_x + (square_size - label_w) // 2 - r_left
+                label_y = square_y + (square_size - label_h) // 2 - r_top
+                draw.text(
+                    (label_x, label_y),
+                    right_label,
+                    fill=(34, 34, 34),
+                    font=square_font,
                 )
 
         buffer = io.BytesIO()

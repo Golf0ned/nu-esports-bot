@@ -717,9 +717,11 @@ class PCs(commands.Cog):
                     "name": name,
                     "state": state,
                     "short": short,
+                    "pc_num": int(short) if str(short).isdigit() else None,
                     "hours": hours,
                     "minutes": minutes,
                     "should_bold": should_bold,
+                    "currently_reserved": name in currently_reserved,
                     "reserved_in": upcoming_reservations.get(name),
                 }
             )
@@ -732,11 +734,13 @@ class PCs(commands.Cog):
         bg_color = (47, 49, 54)
         text_color = (220, 221, 222)
         warning_color = (250, 166, 26)
-        state_to_color = {
-            "ReadyForUser": (87, 242, 135),
-            "UserLoggedIn": (237, 66, 69),
-            "AdminMode": (237, 66, 69),
-            "Off": (67, 73, 82),
+        fallback_color_map = {
+            "green": (87, 242, 135),
+            "red": (237, 66, 69),
+            "black": (67, 73, 82),
+            "purple": (155, 89, 182),
+            "orange": (250, 166, 26),
+            "default": (220, 221, 222),
         }
 
         def load_font(path: str, size: int) -> ImageFont.ImageFont:
@@ -756,9 +760,6 @@ class PCs(commands.Cog):
         )
         warning_font = load_font(
             os.path.join("assets", "fonts", "LibreFranklin-Regular.ttf"), 16
-        )
-        square_font = load_font(
-            os.path.join("assets", "fonts", "LibreFranklin-Bold.ttf"), 16
         )
 
         if not entries:
@@ -827,11 +828,36 @@ class PCs(commands.Cog):
 
         img = Image.new("RGB", (width, height), bg_color)
         draw = ImageDraw.Draw(img)
+        icon_cache: Dict[Tuple[str, int, int], Image.Image] = {}
 
         center_x = width // 2
         squares_x = center_x - (center_cluster_width // 2)
         left_square_x = squares_x
         right_square_x = squares_x + square_size + square_gap
+
+        def load_icon(color: str, pc_num: int) -> Image.Image | None:
+            key = (color, pc_num, square_size)
+            if key in icon_cache:
+                return icon_cache[key]
+
+            color_path = os.path.join("assets", "emojis", color, f"{pc_num}.png")
+            if not os.path.exists(color_path):
+                color_path = os.path.join(
+                    "assets", "emojis", "default", f"{pc_num}.png"
+                )
+                if not os.path.exists(color_path):
+                    return None
+
+            try:
+                icon = Image.open(color_path).convert("RGBA")
+                if icon.size != (square_size, square_size):
+                    icon = icon.resize(
+                        (square_size, square_size), Image.Resampling.LANCZOS
+                    )
+                icon_cache[key] = icon
+                return icon
+            except Exception:
+                return None
 
         def draw_text(entry: Dict, left_anchor_x: int, y: int, align_right: bool):
             main_font = bold_font if entry["should_bold"] else regular_font
@@ -861,6 +887,22 @@ class PCs(commands.Cog):
                     font=warning_font,
                 )
 
+        def draw_pc_icon(entry: Dict, square_x: int, square_y: int):
+            pc_num = entry.get("pc_num")
+            color = PCs.get_entry_icon_color(entry)
+            if isinstance(pc_num, int):
+                icon = load_icon(color, pc_num)
+                if icon is not None:
+                    img.paste(icon, (square_x, square_y), icon)
+                    return
+
+            fallback = fallback_color_map.get(color, fallback_color_map["default"])
+            draw.rounded_rectangle(
+                [square_x, square_y, square_x + square_size, square_y + square_size],
+                radius=4,
+                fill=fallback,
+            )
+
         for i in range(max_rows):
             y = top_padding + (i * row_height)
 
@@ -876,56 +918,9 @@ class PCs(commands.Cog):
 
             square_y = y + (row_height - square_size) // 2
             if i < len(left_entries):
-                left_state = left_entries[i]["state"]
-                left_color = state_to_color.get(left_state, (220, 221, 222))
-                draw.rounded_rectangle(
-                    [
-                        left_square_x,
-                        square_y,
-                        left_square_x + square_size,
-                        square_y + square_size,
-                    ],
-                    radius=4,
-                    fill=left_color,
-                )
-                left_label = str(int(left_entries[i]["short"]))
-                l_left, l_top, l_right, l_bottom = draw.textbbox(
-                    (0, 0), left_label, font=square_font
-                )
-                label_w = l_right - l_left
-                label_h = l_bottom - l_top
-                label_x = left_square_x + (square_size - label_w) // 2 - l_left
-                label_y = square_y + (square_size - label_h) // 2 - l_top
-                draw.text(
-                    (label_x, label_y), left_label, fill=(34, 34, 34), font=square_font
-                )
+                draw_pc_icon(left_entries[i], left_square_x, square_y)
             if i < len(right_entries):
-                right_state = right_entries[i]["state"]
-                right_color = state_to_color.get(right_state, (220, 221, 222))
-                draw.rounded_rectangle(
-                    [
-                        right_square_x,
-                        square_y,
-                        right_square_x + square_size,
-                        square_y + square_size,
-                    ],
-                    radius=4,
-                    fill=right_color,
-                )
-                right_label = str(int(right_entries[i]["short"]))
-                r_left, r_top, r_right, r_bottom = draw.textbbox(
-                    (0, 0), right_label, font=square_font
-                )
-                label_w = r_right - r_left
-                label_h = r_bottom - r_top
-                label_x = right_square_x + (square_size - label_w) // 2 - r_left
-                label_y = square_y + (square_size - label_h) // 2 - r_top
-                draw.text(
-                    (label_x, label_y),
-                    right_label,
-                    fill=(34, 34, 34),
-                    font=square_font,
-                )
+                draw_pc_icon(right_entries[i], right_square_x, square_y)
 
         buffer = io.BytesIO()
         img.save(buffer, format="PNG")
@@ -949,10 +944,7 @@ class PCs(commands.Cog):
                 cell_text = f"{emoji} `{short}`"
             else:
                 uptime_text = f"{hours}h {minutes}m"
-                if entry["should_bold"]:
-                    cell_text = f"{emoji} **`{short}` {uptime_text}**"
-                else:
-                    cell_text = f"{emoji} `{short}` {uptime_text}"
+                cell_text = f"{emoji} `{short}` {uptime_text}"
 
             if entry["reserved_in"] is not None:
                 cell_text += f" *Reserved in {entry['reserved_in']}m"
@@ -980,6 +972,21 @@ class PCs(commands.Cog):
                 rows.append(right)
 
         return ("\n".join(rows) if rows else "No PCs found.", id_to_state)
+
+    @staticmethod
+    def get_entry_icon_color(entry: Dict) -> str:
+        if entry.get("should_bold"):
+            return "orange"
+        if entry.get("currently_reserved"):
+            return "purple"
+        state = entry.get("state")
+        if state == "ReadyForUser":
+            return "green"
+        if state == "Off":
+            return "black"
+        if state in ("UserLoggedIn", "AdminMode"):
+            return "red"
+        return "default"
 
     @commands.slash_command(
         name="pcs", description="Show PC statuses as a color grid", guild_ids=[GUILD_ID]
@@ -1025,36 +1032,38 @@ class PCs(commands.Cog):
             print(f"Failed to fetch reservations: {e}")
             reservations = []
 
-        entries, id_to_state = self.build_pcs_entries(data, reservations)
+        entries, _ = self.build_pcs_entries(data, reservations)
 
-        # Tally counts by state, combining AdminMode into UserLoggedIn
-        counts: Dict[str, int] = {}
-        for state in id_to_state.values():
-            # Map AdminMode to UserLoggedIn for counting
-            normalized_state = "UserLoggedIn" if state == "AdminMode" else state
-            counts[normalized_state] = counts.get(normalized_state, 0) + 1
+        color_counts: Dict[str, int] = {
+            "green": 0,
+            "red": 0,
+            "black": 0,
+            "purple": 0,
+            "orange": 0,
+        }
+        for entry in entries:
+            color = self.get_entry_icon_color(entry)
+            if color in color_counts:
+                color_counts[color] += 1
 
-        # Build legend with unique display names only
-        legend_parts = []
-        seen_names = set()
-        for state, emoji in STATE_TO_EMOJI.items():
-            display_name = STATE_TO_NAME[state]
-            if display_name in seen_names:
-                continue
-            seen_names.add(display_name)
-            # Use the normalized count
-            normalized_state = "UserLoggedIn" if state == "AdminMode" else state
-            legend_parts.append(
-                f"{emoji} {display_name} ({counts.get(normalized_state, 0)})"
-            )
-        legend = " · ".join(legend_parts)
+        legend_parts = [
+            f"🟩 Available ({color_counts['green']})",
+            f"🟥 In Use ({color_counts['red']})",
+        ]
+        if color_counts["black"] > 0:
+            legend_parts.append(f"⬛ Offline ({color_counts['black']})")
+        if color_counts["purple"] > 0:
+            legend_parts.append(f"🟪 Reserved ({color_counts['purple']})")
+        if color_counts["orange"] > 0:
+            legend_parts.append(f"🟧 Kickable ({color_counts['orange']})")
+        legend = "\n".join(legend_parts)
 
         embed = discord.Embed(
             title="PC Statuses",
             color=discord.Color.from_rgb(78, 42, 132),
         )
         embed.add_field(name="Legend", value=legend or "No data", inline=False)
-        embed.set_footer(text="Bold text = Can be kicked off (>2hrs, not reserved)")
+        embed.set_footer(text="Kickable = >2hrs and not reserved")
         try:
             grid_image = self.build_pcs_grid_image(entries)
             file = discord.File(grid_image, filename="pcs.png")

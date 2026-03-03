@@ -830,10 +830,10 @@ class PCs(commands.Cog):
         draw = ImageDraw.Draw(img)
         icon_cache: Dict[Tuple[str, int, int], Image.Image] = {}
 
-        center_x = width // 2
-        squares_x = center_x - (center_cluster_width // 2)
-        left_square_x = squares_x
-        right_square_x = squares_x + square_size + square_gap
+        # Keep dedicated text columns on both sides of the PC icons.
+        # This avoids clipping when one side has much longer warning text.
+        left_square_x = side_padding + left_text_width + text_square_gap
+        right_square_x = left_square_x + square_size + square_gap
 
         def load_icon(color: str, pc_num: int) -> Image.Image | None:
             key = (color, pc_num, square_size)
@@ -864,10 +864,13 @@ class PCs(commands.Cog):
             main_text, warning_text = build_text_parts(entry)
             main_w = 0
             main_h = 0
+            warning_w = 0
             if main_text:
                 main_w, main_h = text_size(main_text, main_font)
             else:
                 _, main_h = text_size("Ag", main_font)
+            if warning_text:
+                warning_w, _ = text_size(warning_text, warning_font)
             text_y = y + (row_height - main_h) // 2
 
             if align_right:
@@ -879,7 +882,11 @@ class PCs(commands.Cog):
                 draw.text((main_x, text_y), main_text, fill=text_color, font=main_font)
 
             if warning_text:
-                warning_x = main_x + main_w + (0 if main_w == 0 else warning_gap)
+                gap = 0 if main_w == 0 else warning_gap
+                if align_right:
+                    warning_x = main_x - gap - warning_w
+                else:
+                    warning_x = main_x + main_w + gap
                 draw.text(
                     (warning_x, text_y),
                     warning_text,

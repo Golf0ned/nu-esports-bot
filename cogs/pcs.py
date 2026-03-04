@@ -759,7 +759,7 @@ class PCs(commands.Cog):
             os.path.join("assets", "fonts", "LibreFranklin-Bold.ttf"), 20
         )
         warning_font = load_font(
-            os.path.join("assets", "fonts", "LibreFranklin-Regular.ttf"), 16
+            os.path.join("assets", "fonts", "LibreFranklin-Regular.ttf"), 20
         )
 
         if not entries:
@@ -777,6 +777,10 @@ class PCs(commands.Cog):
         def text_size(text: str, font: ImageFont.ImageFont) -> Tuple[int, int]:
             left, top, right, bottom = probe_draw.textbbox((0, 0), text, font=font)
             return right - left, bottom - top
+
+        def text_metrics(text: str, font: ImageFont.ImageFont) -> Tuple[int, int, int]:
+            left, top, right, bottom = probe_draw.textbbox((0, 0), text, font=font)
+            return right - left, bottom - top, top
 
         square_size = 24
         square_gap = 8
@@ -864,14 +868,20 @@ class PCs(commands.Cog):
             main_text, warning_text = build_text_parts(entry)
             main_w = 0
             main_h = 0
+            main_top = 0
             warning_w = 0
+            warning_h = 0
+            warning_top = 0
             if main_text:
-                main_w, main_h = text_size(main_text, main_font)
+                main_w, main_h, main_top = text_metrics(main_text, main_font)
             else:
-                _, main_h = text_size("Ag", main_font)
+                _, main_h, main_top = text_metrics("Ag", main_font)
             if warning_text:
-                warning_w, _ = text_size(warning_text, warning_font)
-            text_y = y + (row_height - main_h) // 2
+                warning_w, warning_h, warning_top = text_metrics(
+                    warning_text, warning_font
+                )
+
+            main_y = y + (row_height - main_h) // 2 - main_top
 
             if align_right:
                 main_x = left_anchor_x - main_w
@@ -879,7 +889,7 @@ class PCs(commands.Cog):
                 main_x = left_anchor_x
 
             if main_text:
-                draw.text((main_x, text_y), main_text, fill=text_color, font=main_font)
+                draw.text((main_x, main_y), main_text, fill=text_color, font=main_font)
 
             if warning_text:
                 gap = 0 if main_w == 0 else warning_gap
@@ -887,8 +897,14 @@ class PCs(commands.Cog):
                     warning_x = main_x - gap - warning_w
                 else:
                     warning_x = main_x + main_w + gap
+                # Keep warning text on the same visual baseline as uptime text when both exist.
+                warning_y = (
+                    main_y
+                    if main_text
+                    else y + (row_height - warning_h) // 2 - warning_top
+                )
                 draw.text(
-                    (warning_x, text_y),
+                    (warning_x, warning_y),
                     warning_text,
                     fill=warning_color,
                     font=warning_font,

@@ -151,7 +151,8 @@ reservations:
     # - ...
 
 gameheads:
-  - #<user_id>
+  #<account_id>: "corresponding email"
+  example: "example@email.com"
 
 bot_devs:
   - #<user_id>

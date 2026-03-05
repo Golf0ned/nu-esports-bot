@@ -17,7 +17,7 @@ from utils import db
 GUILD_ID = config.secrets["discord"]["guild_id"]
 
 
-GGLEAP_BASE_URL = config.config["apis"]["ggleap"]
+GGLEAP_BASE_URL = config.secrets["apis"]["ggleap"]
 PCS_ENDPOINT = f"{GGLEAP_BASE_URL}/machines/uptime"
 RESERVATIONS_ENDPOINT = f"{GGLEAP_BASE_URL}/reservations"
 

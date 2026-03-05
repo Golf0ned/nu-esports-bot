@@ -1934,9 +1934,12 @@ class ReservationTimeModal(discord.ui.Modal):
                 )
                 embed.add_field(name="Team", value=self.team, inline=False)
                 embed.add_field(name="Res Type", value=self.res_type, inline=False)
+                manager_email = "Email not found"
+                if isinstance(GAME_HEAD_EMAILS, dict):
+                    manager_email = GAME_HEAD_EMAILS.get(manager, "Email not found")
                 embed.add_field(
                     name="Manager Email",
-                    value=GAME_HEAD_EMAILS.get(manager, "Email not found"),
+                    value=manager_email,
                     inline=False,
                 )
                 embed.add_field(name="Manager", value=manager, inline=False)

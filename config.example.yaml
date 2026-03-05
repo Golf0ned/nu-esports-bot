@@ -87,6 +87,8 @@ gameroom:
       - 'Madden 23'
       - 'Call of Duty: Black Ops 3'
       - 'Call of Duty: Modern Warfare II'
+  staff:
+    - #<user_id> ...
 
 teams:
 
@@ -138,20 +140,15 @@ valorant:
     initiator: [4, 9, 12, 15, 18, 20, 25]
     sentinel: [1, 3, 5, 11, 16, 21, 24] # Viper's here for better randomized teams
 
-apis:
-  ggleap: # link here
 
 reservations:
+  # where the outputs of reservations gets sent to (ie gameroom staff channel)
   channel: #<channel_id>
   # who can invoke the reserve command
   roles:
     - #<role_id>
     - #<role_id>
     # - ...
-
-gameroom:
-  staff:
-    - #<user_id> ...
 
 gameheads:
   - #<user_id>

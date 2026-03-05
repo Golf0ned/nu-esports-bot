@@ -1,6 +1,5 @@
 import asyncio
 import io
-import os
 import random
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -135,24 +134,14 @@ class Connections(commands.Cog):
             return None
 
     def _get_apify_key(self) -> str | None:
-        env_value = os.getenv("APIFY_KEY")
-        if env_value:
-            return env_value.strip()
-
-        env_path = Path(".env")
-        if not env_path.exists():
+        apis = config.secrets.get("apis", {})
+        if not isinstance(apis, dict):
             return None
-
-        for line in env_path.read_text().splitlines():
-            stripped = line.strip()
-            if not stripped or stripped.startswith("#"):
-                continue
-            if "=" not in stripped:
-                continue
-            key, value = stripped.split("=", 1)
-            if key.strip() == "APIFY_KEY":
-                return value.strip()
-        return None
+        value = apis.get("apify-key")
+        if not isinstance(value, str):
+            return None
+        value = value.strip()
+        return value or None
 
     async def get_or_fetch_puzzle(self, requested_date: str) -> CachedPuzzle:
         if requested_date in self.puzzle_cache:
@@ -166,9 +155,7 @@ class Connections(commands.Cog):
 
                 apify_key = self._get_apify_key()
                 if not apify_key:
-                    raise ValueError(
-                        "`APIFY_KEY` is missing from environment and `.env`."
-                    )
+                    raise ValueError("`secrets.yaml -> apis.apify-key` is missing.")
 
                 url = (
                     "https://jindrich-bar--nyt-games-api.apify.actor/"

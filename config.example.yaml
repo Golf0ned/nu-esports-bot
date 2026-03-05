@@ -148,3 +148,13 @@ reservations:
     - #<role_id>
     - #<role_id>
     # - ...
+
+gameroom:
+  staff:
+    - #<user_id> ...
+
+gameheads:
+  - #<user_id>
+
+bot_devs:
+  - #<user_id>

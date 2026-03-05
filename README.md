@@ -51,6 +51,8 @@ There's a couple of additional things you need to do here to configure the bot:
 - Bot: Make sure all privileged gateway intents are enabled.
 - Emojis: If you want to utilize any custom emojis for features like special users or ping reacts, you'll need to upload them here.
 
+Need a walkthrough? Check out this setup video: [https://www.youtube.com/watch?v=mb-A5FnGW5I](https://www.youtube.com/watch?v=mb-A5FnGW5I)
+
 ### Setting up Config
 
 The bot uses the files `config.yaml` and `secrets.yaml` to store configuration.

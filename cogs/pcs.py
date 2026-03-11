@@ -1011,10 +1011,16 @@ class PCs(commands.Cog):
             return "red"
         return "default"
 
+    @staticmethod
+    def pcs_cooldown(ctx):
+        if ctx.author.id in STAFF_LIST:
+            return None
+        return commands.Cooldown(1, 300)
+
     @commands.slash_command(
         name="pcs", description="Show PC statuses as a color grid", guild_ids=[GUILD_ID]
     )
-    @commands.cooldown(1, 300, commands.BucketType.user)
+    @commands.dynamic_cooldown(pcs_cooldown, commands.BucketType.user)
     async def pcs(self, ctx):
         await ctx.defer()
         now = datetime.now(CENTRAL_TZ)

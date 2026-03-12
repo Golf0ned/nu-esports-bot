@@ -1678,7 +1678,7 @@ class PCs(commands.Cog):
         # Colors (Discord dark theme friendly)
         bg_color = (47, 49, 54)  # Discord dark background
         text_color = (220, 221, 222)  # Light gray text
-        grid_color = (60, 63, 68)  # Slightly lighter for grid lines
+        #grid_color = (60, 63, 68)  # Slightly lighter for grid lines
         available_color = (87, 242, 135)  # Green
         reserved_color = (155, 89, 182)  # Purple
         pending_color = (255, 165, 0)  # Orange
@@ -1736,9 +1736,9 @@ class PCs(commands.Cog):
 
                 # Draw filled rectangle
                 draw.rectangle(
-                    [x, y, x + cell_size - 2, y + cell_size - 2],
+                    [x, y+2, x + cell_size - 2 + 1, y + cell_size - 2],
                     fill=color,
-                    outline=grid_color,
+                #   outline=grid_color,
                 )
 
         # Save to BytesIO

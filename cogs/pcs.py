@@ -1736,9 +1736,9 @@ class PCs(commands.Cog):
 
                 # Draw filled rectangle
                 draw.rectangle(
-                    [x, y, x + cell_size - 2, y + cell_size - 2],
+                    [x, y+2, x + cell_size - 2 + 1, y + cell_size - 2],
                     fill=color,
-                    outline=grid_color,
+                #   outline=grid_color,
                 )
 
         # Save to BytesIO

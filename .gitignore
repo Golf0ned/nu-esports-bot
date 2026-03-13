@@ -7,4 +7,6 @@ venv/
 # Config (.env phased out)
 .env
 config.yaml
+# Real config file for Railway
+config.real.yaml
 secrets.yaml

@@ -75,11 +75,6 @@ From the root directory of the repository, run the following command:
 docker-compose up
 ```
 
-When iterating, rebuilding and composing is necessary. The following command is a convenience one line
-```bash
-docker compose build --no-cache --pull && docker compose up
-```
-
 ### Running Locally
 
 Running the bot locally requires a few additional steps.

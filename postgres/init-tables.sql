@@ -1,4 +1,5 @@
 DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS reservations;
 
 CREATE TABLE users
 (
@@ -6,3 +7,14 @@ CREATE TABLE users
     points BIGINT DEFAULT 0
 );
 
+CREATE TABLE reservations
+(
+    id SERIAL PRIMARY KEY,
+    team VARCHAR(50) NOT NULL,
+    pcs INTEGER[] NOT NULL,
+    start_time TIMESTAMPTZ NOT NULL,
+    end_time TIMESTAMPTZ NOT NULL,
+    manager VARCHAR(100) NOT NULL,
+    is_prime_time BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+); 

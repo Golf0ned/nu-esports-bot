@@ -122,6 +122,9 @@ class PUGs(commands.Cog):
             and self.active_sessions[lobby_channel.id].active
         ):
             self.active_sessions[lobby_channel.id].active = False
+            await ctx.send_followup(
+                "PUGs lobby ended!"
+            )
         else:
             await ctx.send_followup(
                 "No active lobby in this channel!", ephemeral=True

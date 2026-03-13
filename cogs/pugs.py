@@ -1,5 +1,6 @@
 import asyncio
 from typing import Dict, Tuple, List
+import random
 
 import discord
 from discord.ext import commands
@@ -18,10 +19,12 @@ class PUGSession:
         lobby_channel: discord.VoiceChannel,
         blue_channel: discord.VoiceChannel,
         red_channel: discord.VoiceChannel,
+        num_players: int,
     ):
-        self.lobby: discord.VoiceChannel = lobby_channel
-        self.blue_channel: discord.VoiceChannel = blue_channel
-        self.red_channel: discord.VoiceChannel = red_channel
+        self.lobby_channel = lobby_channel
+        self.blue_channel = blue_channel
+        self.red_channel = red_channel
+        self.num_players = num_players
         self.blue_team: List[discord.Member] = []
         self.red_team: List[discord.Member] = []
         self.active: bool = True
@@ -33,16 +36,35 @@ class PUGs(commands.Cog):
         self.bot: commands.Bot = bot
         self.active_sessions: Dict[int, PUGSession] = {}
 
-    @commands.slash_command(
+    pugs_group = discord.SlashCommandGroup(
+        "pugs", "Lobby and voice channel tools for PUGs"
+    )
+
+    @pugs_group.command(
         name="start", description="Start a PUGs session", guild_ids=[GUILD_ID]
     )
-    @discord.option(name="Blue Channel", channel_types=[discord.ChannelType.voice])
-    @discord.option(name="Red Channel", channel_types=[discord.ChannelType.voice])
+    @discord.option(
+        name="blue",
+        description="Voice channel for blue team",
+        channel_types=[discord.ChannelType.voice],
+    )
+    @discord.option(
+        name="red",
+        description="Voice channel for red team",
+        channel_types=[discord.ChannelType.voice],
+    )
+    @discord.option(
+        name="num_players",
+        description="Maximum number of players (defaults to 10)",
+        channel_types=[discord.ChannelType.voice],
+        default=10,
+    )
     async def start(
         self,
         ctx: discord.ApplicationContext,
         blue: discord.VoiceChannel,
         red: discord.VoiceChannel,
+        num_players: int,
     ):
         """
         @brief Start a new lobby and add it to `active_sessions`.
@@ -68,7 +90,7 @@ class PUGs(commands.Cog):
             )
         else:
             self.active_sessions[lobby_channel.id] = PUGSession(
-                lobby_channel, blue, red
+                lobby_channel, blue, red, num_players
             )
 
         await ctx.send_followup(
@@ -77,15 +99,19 @@ class PUGs(commands.Cog):
         )
 
     async def _generate_match_logic(self, session: PUGSession):
-        players = session.lobby.members
+        players = session.lobby_channel.members
 
         # TODO: real team creation logic
         # First approach: people who have played the least
         # Second approach: balance by wins/losses in session
         # Third approach: DB-backed MMR system
         # Keep this method in this class in case we do global MMR system
-        session.blue_team = players[:5]
-        session.red_team = players[5:10]
+        player_count = min(len(players), session.num_players)
+
+        selected_players = random.sample(players, player_count)
+        mid = len(selected_players) // 2
+        session.blue_team = selected_players[:mid]
+        session.red_team = selected_players[mid:]
 
     async def _process_match_results(self, session: PUGSession, winner: str):
         # Keep this method in this class in case we do global MMR system
@@ -126,7 +152,9 @@ class LobbyCreatedView(discord.ui.View):
         start_view = MatchStartView(self.cog, self.session)
         start_embed = start_view.generate_embed()
 
-        await interaction.edit_original_response(view=start_view, embed=start_embed)
+        await interaction.edit_original_response(
+            content=None, view=start_view, embed=start_embed
+        )
 
 
 class MatchStartView(discord.ui.View):
@@ -170,7 +198,10 @@ class MatchStartView(discord.ui.View):
         for p in self.red_team:
             async_tasks.append(p.move_to(self.session.red_channel))
 
-        await asyncio.gather(*async_tasks, return_exceptions=True)
+        results = await asyncio.gather(*async_tasks, return_exceptions=True)
+        for result in results:
+            if isinstance(result, Exception):
+                print(result)
 
     @discord.ui.button(label="Blue Wins", style=discord.ButtonStyle.primary, emoji="🟦")
     async def blue_win_callback(self, button, interaction: discord.Interaction):
@@ -182,7 +213,23 @@ class MatchStartView(discord.ui.View):
 
     async def process_winner(self, interaction: discord.Interaction, winner: str):
         await interaction.response.defer()
+
+        # Process match results in PUGs session storage
         await self.cog._process_match_results(self.session, winner=winner)
+
+        # Move everyone back to lobby
+        async_tasks = []
+        for p in self.session.blue_channel.members:
+            async_tasks.append(p.move_to(self.session.lobby_channel))
+        for p in self.session.red_channel.members:
+            async_tasks.append(p.move_to(self.session.lobby_channel))
+
+        results = await asyncio.gather(*async_tasks, return_exceptions=True)
+        for result in results:
+            if isinstance(result, Exception):
+                print(result)
+
+        # Prepare end card
         end_view = MatchEndView(
             self.cog, self.session, self.blue_team, self.red_team, winner
         )
@@ -220,10 +267,12 @@ class MatchEndView(discord.ui.View):
     async def button_callback(
         self, button: discord.ui.Button, interaction: discord.Interaction
     ):
+        button.disabled = True
+        await interaction.response.edit_message(view=self)
+
         # Get the cog's defined teams and pass them along to MatchStartView
-        await interaction.response.defer()
-        blue_team, red_team = await self.cog._generate_match_logic(self.session)
-        start_view = MatchStartView(self.cog, self.session, blue_team, red_team)
+        await self.cog._generate_match_logic(self.session)
+        start_view = MatchStartView(self.cog, self.session)
         start_embed = start_view.generate_embed()
 
         await interaction.followup.send(view=start_view, embed=start_embed)

@@ -98,6 +98,36 @@ class PUGs(commands.Cog):
             view=LobbyCreatedView(self, self.active_sessions[lobby_channel.id]),
         )
 
+    @pugs_group.command(
+            name = "finish", description="Mark PUGs session as done", guild_ids=[GUILD_ID]
+    )
+    async def finish(
+        self,
+        ctx: discord.ApplicationContext
+    ):
+        """
+        @brief End the PUGs lobby in this current channel.
+        """
+        await ctx.defer()
+
+        # Check voice channel
+        if ctx.user.voice:
+            lobby_channel: discord.VoiceChannel = ctx.user.voice.channel
+        else:
+            await ctx.send_followup("You are not in a voice channel!", ephemeral=True)
+            return
+        
+        if (
+            lobby_channel.id in self.active_sessions
+            and self.active_sessions[lobby_channel.id].active
+        ):
+            self.active_sessions[lobby_channel.id].active = False
+        else:
+            await ctx.send_followup(
+                "No active lobby in this channel!", ephemeral=True
+            )
+
+
     async def _generate_match_logic(self, session: PUGSession):
         players = session.lobby_channel.members
 

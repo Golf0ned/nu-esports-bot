@@ -1,5 +1,7 @@
 services:
   bot:
+    environment:
+      PYTHONUNBUFFERED: 1
     build:
       context: .
       args:

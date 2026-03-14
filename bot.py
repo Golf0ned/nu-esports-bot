@@ -23,6 +23,7 @@ cogs_list = [
     "pcs",
     "game",
     "connections",
+    "pugs"
 ]
 
 for cog in cogs_list:

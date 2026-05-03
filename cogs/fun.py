@@ -8,7 +8,7 @@ from utils import config
 
 
 GUILD_ID = config.secrets["discord"]["guild_id"]
-
+TYST_STICKER_ID = 1500307023814721646
 
 class Fun(commands.Cog):
     def __init__(self, bot):
@@ -274,6 +274,10 @@ class Fun(commands.Cog):
         if output := chess(self, message):
             await message.add_reaction(output)
 
+
+        if await ty_stan(message):
+            await message.reply(output)
+
         if output := i_love_osu(message):
             await message.reply(output)
 
@@ -295,6 +299,19 @@ def chess(self, message):
         output = f"<:{emoji}:{id}>"
         return output
 
+async def ty_stan(message):
+    lower_content = message.content.lower()
+    if random.randint(1, 100) <= 10 and ("thank you shannon tan" in lower_content or "tyst" in lower_content):
+        sticker = discord.utils.get(message.guild.stickers, id=TYST_STICKER_ID)
+        if sticker is not None:
+            await message.reply(
+                "THANK YOU SHANNON TAN THANK YOU SHANNON TAN",
+                stickers=[sticker]
+            )
+        else:
+            return "THANK YOU SHANNON TAN"
+        return True
+    return False
 
 def i_love_osu(message):
     lower_content = message.content.lower()

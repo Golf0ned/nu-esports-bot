@@ -1092,6 +1092,7 @@ class PCs(commands.Cog):
             color=discord.Color.from_rgb(78, 42, 132),
         )
         embed.add_field(name="Legend", value=legend or "No data", inline=False)
+        embed.description = "⭐ We made a website! [the nexus nexus](https://thenexusnexus.vercel.app/)"
         embed.set_footer(text="Kickable = >2hrs and not reserved")
         try:
             grid_image = self.build_pcs_grid_image(entries)

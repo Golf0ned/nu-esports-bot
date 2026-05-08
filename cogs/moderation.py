@@ -75,7 +75,7 @@ class Moderation(commands.Cog):
         if seconds:
             await ctx.respond(f"🐌 {seconds}-second Slowmode enabled.")
         else:
-            await ctx.respond(f"🐛 Slowmode disabled!")
+            await ctx.respond("🐛 Slowmode disabled!")
 
 def setup(bot):
     bot.add_cog(Moderation(bot))

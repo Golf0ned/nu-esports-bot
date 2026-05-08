@@ -9,7 +9,6 @@ from utils import config
 
 GUILD_ID = config.secrets["discord"]["guild_id"]
 TYST_STICKER_ID = 1500307023814721646
-STREAM_LINK = "https://twitch.tv/NorthwesternEsports"
 
 class Fun(commands.Cog):
     def __init__(self, bot):
@@ -19,29 +18,7 @@ class Fun(commands.Cog):
             "text_unmute_task": None,
             "voice_unmute_task": None,
             "original_text_permissions": {},  # {channel_id: send_messages_value}
-        }
-
-    @discord.slash_command(
-            name="status",
-            description="Changes status of the bot",
-            guild_ids=[GUILD_ID],
-    )
-    async def color(self, 
-                    ctx: discord.ApplicationContext, 
-                    type: str = discord.Option(str, "What kind of status?", choices=["streaming", "default", "custom"]),
-                    status: str = ""):
-        if type == "streaming":
-            if status == "":
-                status = "NU Esports is live!"
-            await self.bot.change_presence(activity=discord.Streaming(name=status, url=STREAM_LINK))
-            await ctx.respond("🚨 Showing stream in status!", ephemeral=True)
-        elif type == "custom":
-            await self.bot.change_presence(activity=discord.Activity(type=discord.ActivityType.playing, name=status))
-            await ctx.respond(f"📝 Changed status to \"{status}\"!", ephemeral=True)
-        else: #default
-            await self.bot.change_presence(activity=discord.Activity(type=discord.ActivityType.listening, name="UNCA / Composure"))
-            await ctx.respond("🤖 Changed to default status!")
-        
+        }      
 
     @discord.slash_command(
         name="mutehannah",

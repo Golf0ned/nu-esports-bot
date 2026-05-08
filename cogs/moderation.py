@@ -60,5 +60,22 @@ class Moderation(commands.Cog):
         await ctx.channel.set_permissions(ctx.guild.default_role, overwrite=overwrite)
         await ctx.respond("🔓 Channel unlocked.", ephemeral=True)
 
+    @discord.slash_command(
+        name="slowmode",
+        description="Applies a slowmode to a channel.",
+        guild_ids=[GUILD_ID]
+    )
+    @default_permissions(manage_channels=True)
+    async def slowmode(self, ctx: discord.ApplicationContext, seconds: int):
+        if not ctx.channel.permissions_for(ctx.author).manage_channels:
+            await ctx.respond("You do not have permission to use this command.", ephemeral=True)
+            return
+    
+        await ctx.channel.edit(slowmode_delay=seconds)
+        if seconds:
+            await ctx.respond(f"🐌 {seconds}-second Slowmode enabled.")
+        else:
+            await ctx.respond(f"🐛 Slowmode disabled!")
+
 def setup(bot):
     bot.add_cog(Moderation(bot))

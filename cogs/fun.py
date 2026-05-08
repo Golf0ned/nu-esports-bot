@@ -18,7 +18,7 @@ class Fun(commands.Cog):
             "text_unmute_task": None,
             "voice_unmute_task": None,
             "original_text_permissions": {},  # {channel_id: send_messages_value}
-        }
+        }      
 
     @discord.slash_command(
         name="mutehannah",

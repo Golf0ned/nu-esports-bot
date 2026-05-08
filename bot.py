@@ -24,7 +24,8 @@ cogs_list = [
     "game",
     "connections",
     "pugs",
-    "moderation"
+    "moderation",
+    "presence"
 ]
 
 for cog in cogs_list:

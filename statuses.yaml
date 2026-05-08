@@ -1,0 +1,185 @@
+# statuses:
+#   - type: <type> (lowercase)
+#     name: "<text>"
+
+# try to keep them short, discord cuts them off.
+# these are not blank statuses like regular users get.
+# they're the "playing ____" type thing, so they get cut off quick. 
+
+statuses:
+
+  # boring informational ones
+  - type: playing
+    name: "thenexusnexus.vercel.app"
+
+  # shitposts
+  - type: playing
+    name: "stoppokingmeyoupieceofshitillfuckingkillyou"
+
+  - type: listening
+    name: "D.VA DIFFERENTIAL! D.VA DIFFERENTIAL!!"
+
+  - type: listening
+    name: "WHAT IS WRONG WITH THESE PEOPLE? Oh my GOD..."
+
+  - type: listening
+    name: "nt amir. 🫨"
+
+  - type: listening
+    name: "markus tell- markus tell rowland to k-"
+
+  - type: listening
+    name: "siddharth i 𝙝𝙖𝙩𝙚 you"
+
+  - type: listening
+    name: "amimi my burger"
+
+  - type: listening
+    name: "if i get this kill, im not actually racist"
+
+  - type: listening
+    name: "男人的嘴 骗人的鬼"
+
+  - type: listening
+    name: "a man's words are the devil's lies."
+
+  - type: listening
+    name: "all men do is lie"
+
+  - type: listening
+    name: "the snow goose need not bathe to make itself white. neither need you do anything but be yourself."
+
+  - type: playing
+    name: "masculine macholivia"
+
+  - type: playing
+    name: "i think gay people should be jolly at the christmas tree"
+
+  - type: listening
+    name: "we have dead by daylight at home"
+
+  - type: playing
+    name: "\"We are slop piggies, give us more gruel for our tummies.\""
+
+  - type: listening
+    name: "fuyckj mchungeus life"
+
+  - type: listening
+    name: "i love frieren: beyond journey's end"
+
+  - type: listening
+    name: "that's my aura"
+
+  - type: listening
+    name: "helo its me sidart"
+
+  - type: listening
+    name: "u look like u would steal ur own lunch money"
+
+  - type: listening
+    name: "Nah, I'd win."
+
+  - type: listening
+    name: "shannon tan reportedly failed the jump for the beef"
+
+  - type: listening
+    name: "what is cum time?"
+
+  - type: listening
+    name: "i imagine you as patrick from spongebob with the drool in his mouth whenever i read things u type"
+
+  - type: listening
+    name: "i hope god smites me for my failures" #https://twitter.com/cabby/status/1908729945154871315
+
+  - type: playing
+    name: "my favorite emojis are 🦦, 🐛, and 💐"
+
+  - type: listening
+    name: "happy birthday hannah"
+
+  - type: listening
+    name: "whats up family"
+
+  - type: watching
+    name: "SIDDHARTH DIAMOND ON LEAGUE 2026"
+
+  - type: listening
+    name: "domain expansion: the lions den 🦁"
+
+  - type: listening
+    name: "whats up babe?"
+
+  - type: watching
+    name: "this is the bare minimum."
+
+  - type: listening
+    name: "dark stamour"
+
+  - type: listening
+    name: "light findler"
+
+  - type: listening
+    name: "themes and such"
+    
+  # God Save the Three - glaive
+  - type: listening
+    name: "🎵 𝓖𝓸𝓭 𝓼𝓪𝓿𝓮 𝓽𝓱𝓮 𝓽𝓱𝓻𝓮𝓮" 
+
+  - type: listening
+    name: "🎵 right here, in Weston Super Mare"
+
+  - type: listening
+    name: "🎵 back of the jersey, it say Yaya"
+
+  - type: listening
+    name: "🎵 it's cool you're in college for socioeconomics"
+
+  - type: listening
+    name: "🎵 'cause this room's far too crowded (it's so full)"
+    
+  - type: listening
+    name: "🎵 we get money like the troubles, blow it at the mall"
+    
+  - type: listening
+    name: "🎵 i'm in Turin like Henry, I'm in Barca' like him too"
+
+  # watching things
+  - type: watching
+    name: "Jujutsu Kaisen"
+  
+  - type: watching
+    name: "Frieren: Beyond Journey's End"
+  
+  - type: watching
+    name: "Witch Hat Ateier"
+  
+  - type: watching
+    name: "Steel Ball Run"
+  
+  - type: watching
+    name: "Chainsaw Man"
+  
+  - type: watching
+    name: "Apothecary Diaries"
+  
+  - type: watching
+    name: "old lectures"
+
+  # playing things
+  - type: playing
+    name: "VALORANT"
+  
+  - type: playing
+    name: "Overwatch"
+  
+  - type: playing
+    name: "League of Legends"
+  
+  - type: playing
+    name: "Deadlock"
+  
+  - type: playing
+    name: "The Legend of Zelda"
+  
+  - type: playing
+    name: "Pokemon: Black"

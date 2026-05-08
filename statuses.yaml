@@ -108,6 +108,18 @@ statuses:
 
   - type: listening
     name: "whats up babe?"
+
+  - type: watching
+    name: "this is the bare minimum."
+
+  - type: listening
+    name: "dark stamour"
+
+  - type: listening
+    name: "light findler"
+
+  - type: listening
+    name: "themes and such"
     
   # God Save the Three - glaive
   - type: listening

@@ -39,7 +39,8 @@ class Moderation(commands.Cog):
         
         overwrite = ctx.channel.overwrites_for(ctx.guild.default_role)
         overwrite.send_messages = False 
-        if hide: overwrite.view_channel = False
+        if hide: 
+            overwrite.view_channel = False
         await ctx.channel.set_permissions(ctx.guild.default_role, overwrite=overwrite)
         await ctx.respond("🔒 Channel locked.")
 
@@ -56,7 +57,8 @@ class Moderation(commands.Cog):
         
         overwrite = ctx.channel.overwrites_for(ctx.guild.default_role)
         overwrite.send_messages = True
-        if unhide: overwrite.view_channel = True
+        if unhide: 
+            overwrite.view_channel = True
         await ctx.channel.set_permissions(ctx.guild.default_role, overwrite=overwrite)
         await ctx.respond("🔓 Channel unlocked.", ephemeral=True)
 

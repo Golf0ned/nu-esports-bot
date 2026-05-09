@@ -2002,7 +2002,6 @@ class ReservationTimeModal(discord.ui.Modal):
                         "team": self.team,
                     }
                     self.cog.staff_ping_index = (self.cog.staff_ping_index + 1) % len(STAFF_LIST)
-                    self.cog.staff_ping_index = (self.cog.staff_ping_index + 1) % len(STAFF_LIST)
                     await db.perform_one(
                         "UPDATE bot_state SET value = %s WHERE key = 'staff_ping_index'",
                         (str(self.cog.staff_ping_index),)

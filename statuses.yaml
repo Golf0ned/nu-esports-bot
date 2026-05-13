@@ -120,6 +120,21 @@ statuses:
 
   - type: listening
     name: "themes and such"
+
+  - type: watching
+    name: "weinberg first-year hannah kwak"
+
+  - type: listening
+    name: "shannon tan lives at 1927 orrington ave"
+
+  - type: listening
+    name: "and not play league as a form of escapism"
+
+  - type: listening
+    name: "we have dead by daylight at home"
+
+  - type: playing
+    name: "i love osu"
     
   # God Save the Three - glaive
   - type: listening
@@ -180,6 +195,9 @@ statuses:
   
   - type: playing
     name: "The Legend of Zelda"
+
+  - type: playing
+    name: "osu!"
   
   - type: playing
-    name: "Pokemon: Black"
+    name: "Pokémon: Black"

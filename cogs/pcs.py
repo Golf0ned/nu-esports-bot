@@ -92,13 +92,18 @@ class PCs(commands.Cog):
             # External events have unlimited prime time quota since they're staff-managed
             "External": 99,
         }
-        # Staff ping index for cycling through gameroom staff
-        self.staff_ping_index = 0
         # Track reservation messages pending acknowledgment
         # Format: {message_id: {"staff_id": int, "channel_id": int, "sent_at": datetime, "team": str}}
         self.pending_acknowledgments = {}
         # Start background task
         self.check_pending_acknowledgments.start()
+
+    #free hannah
+    async def cog_load(self):
+        result = await db.fetch_one(
+            "SELECT value FROM bot_state WHERE key = 'staff_ping_index'"
+        )
+        self.staff_ping_index = int(result[0]) if result else 0
 
     @commands.Cog.listener()
     async def on_reaction_add(self, reaction, user):
@@ -311,6 +316,10 @@ class PCs(commands.Cog):
                 staff_id = STAFF_LIST[self.staff_ping_index % len(STAFF_LIST)]
                 await reservations_channel.send(f"<@{staff_id}>", embed=embed)
                 self.staff_ping_index = (self.staff_ping_index + 1) % len(STAFF_LIST)
+                await db.perform_one(
+                    "UPDATE bot_state SET value = %s WHERE key = 'staff_ping_index'",
+                    (str(self.staff_ping_index),)
+                )
             else:
                 await reservations_channel.send(embed=embed)
         except Exception as e:
@@ -1992,8 +2001,10 @@ class ReservationTimeModal(discord.ui.Modal):
                         "sent_at": datetime.now(CENTRAL_TZ),
                         "team": self.team,
                     }
-                    self.cog.staff_ping_index = (self.cog.staff_ping_index + 1) % len(
-                        STAFF_LIST
+                    self.cog.staff_ping_index = (self.cog.staff_ping_index + 1) % len(STAFF_LIST)
+                    await db.perform_one(
+                        "UPDATE bot_state SET value = %s WHERE key = 'staff_ping_index'",
+                        (str(self.cog.staff_ping_index),)
                     )
                 else:
                     await reservations_channel.send(embed=embed)

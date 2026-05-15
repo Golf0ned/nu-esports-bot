@@ -1,6 +1,7 @@
 import asyncio
 import io
 import os
+import random
 from datetime import datetime, timedelta, timezone, date
 from typing import Dict, Tuple, List
 from zoneinfo import ZoneInfo
@@ -92,8 +93,8 @@ class PCs(commands.Cog):
             # External events have unlimited prime time quota since they're staff-managed
             "External": 99,
         }
-        # Staff ping index for cycling through gameroom staff
-        self.staff_ping_index = 0
+        # free hannah
+        self.staff_ping_index = random.randrange(len(STAFF_LIST)) if STAFF_LIST else 0
         # Track reservation messages pending acknowledgment
         # Format: {message_id: {"staff_id": int, "channel_id": int, "sent_at": datetime, "team": str}}
         self.pending_acknowledgments = {}
@@ -1679,7 +1680,7 @@ class PCs(commands.Cog):
         # Colors (Discord dark theme friendly)
         bg_color = (47, 49, 54)  # Discord dark background
         text_color = (220, 221, 222)  # Light gray text
-        #grid_color = (60, 63, 68)  # Slightly lighter for grid lines
+        # grid_color = (60, 63, 68)  # Slightly lighter for grid lines
         available_color = (87, 242, 135)  # Green
         reserved_color = (155, 89, 182)  # Purple
         pending_color = (255, 165, 0)  # Orange
@@ -1737,9 +1738,9 @@ class PCs(commands.Cog):
 
                 # Draw filled rectangle
                 draw.rectangle(
-                    [x, y+2, x + cell_size - 2 + 1, y + cell_size - 2],
+                    [x, y + 2, x + cell_size - 2 + 1, y + cell_size - 2],
                     fill=color,
-                #   outline=grid_color,
+                    #   outline=grid_color,
                 )
 
         # Save to BytesIO

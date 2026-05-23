@@ -15,6 +15,7 @@ from utils import db
 
 
 GUILD_ID = config.secrets["discord"]["guild_id"]
+BOT_CHANNEL_ID = 741898302055907388
 
 
 GGLEAP_BASE_URL = config.secrets["apis"]["ggleap"]
@@ -1022,7 +1023,8 @@ class PCs(commands.Cog):
     )
     @commands.dynamic_cooldown(pcs_cooldown, commands.BucketType.user)
     async def pcs(self, ctx):
-        await ctx.defer()
+        in_bot_channel = (ctx.channel.id == BOT_CHANNEL_ID) 
+        await ctx.defer(ephemeral=(not in_bot_channel))
         now = datetime.now(CENTRAL_TZ)
         hours = self.get_gameroom_hours_for_date(now.date())
         if not hours or not (hours[0] <= now <= hours[1]):
@@ -1037,7 +1039,7 @@ class PCs(commands.Cog):
                 description=description,
                 color=discord.Color.from_rgb(78, 42, 132),
             )
-            await ctx.followup.send(embed=embed)
+            await ctx.followup.send(embed=embed, ephemeral=(not in_bot_channel))
             return
         try:
             data = await self.fetch_pcs()
@@ -1098,12 +1100,12 @@ class PCs(commands.Cog):
             grid_image = self.build_pcs_grid_image(entries)
             file = discord.File(grid_image, filename="pcs.png")
             embed.set_image(url="attachment://pcs.png")
-            await ctx.followup.send(embed=embed, file=file)
+            await ctx.followup.send(embed=embed, file=file, ephemeral=(not in_bot_channel))
         except Exception as e:
             print(f"Failed to render /pcs image, falling back to text: {e}")
             grid, _ = self.build_grid(data, reservations)
             embed.add_field(name="Grid", value=grid, inline=False)
-            await ctx.followup.send(embed=embed)
+            await ctx.followup.send(embed=embed, ephemeral=(not in_bot_channel))
 
     @commands.slash_command(
         name="pc",

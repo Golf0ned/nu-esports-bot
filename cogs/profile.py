@@ -42,7 +42,7 @@ async def tier_autocomplete(ctx: discord.AutocompleteContext):
     return [discord.OptionChoice(t) for t in get_tiers(game)] if game else []
 
 async def division_autocomplete(ctx: discord.AutocompleteContext):
-    game, tier = ctx.options.get("game")
+    game, tier = ctx.options.get("game"), ctx.options.get("tier")
     if not game or not tier_has_divisions(game, tier):
         return ["1"]
     divisions_per_tier = get_divisions(game)
@@ -53,7 +53,7 @@ async def roles_autocomplete(ctx: discord.AutocompleteContext):
     return [discord.OptionChoice(r) for r in get_roles(game)] if game else []
 
 async def mains_autocomplete(ctx: discord.AutocompleteContext):
-    game = ctx.options.get("game"), ctx.options.get("main")
+    game = ctx.options.get("game")
     return [discord.OptionChoice(m) for m in get_mains(game)] if game else []
 
 
@@ -62,7 +62,7 @@ def build_home_embed(target, profile_row, total_pages):
     picture_url = profile_row[1] if profile_row and profile_row[1] else None
 
     embed = discord.Embed(
-        title=f"{target.display_name}'s Profile"
+        title=f"{target.display_name}'s Profile",
         description=bio,
         color=discord.Color.from_rgb(78, 42, 132),
     )
@@ -194,11 +194,18 @@ class Profile(commands.Cog):
             VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
             ON CONFLICT (discordid, game)
             DO UPDATE SET
-                role = EXCLUDED.role
-                updated_at = CURRENT_TIMESTAMP
+                role = EXCLUDED.role,
+                updated_at = CURRENT_TIMESTAMP;
         '''
 
-        await db.preform_one(sql, (ctx.author.id, game, role))
+        await db.perform_one(sql, (ctx.author.id, game, role))
+
+        embed = discord.Embed(
+            title="Role Updated",
+            description=f"{game.title()}: **{role}**",
+            color=discord.Color.from_rgb(78, 42, 132),
+        )
+        await ctx.followup.send(embed=embed, ephemeral=True)
 
     @set_grp.command(
             name = "main",
@@ -232,13 +239,20 @@ class Profile(commands.Cog):
             VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
             ON CONFLICT (discordid, game)
             DO UPDATE SET
-                main = EXCLUDED.main
-                updated_at = CURRENT_TIMESTAMP
+                main = EXCLUDED.main,
+                updated_at = CURRENT_TIMESTAMP;
         '''
 
-        await db.preform_one(sql, (ctx.author.id, game, main))
+        await db.perform_one(sql, (ctx.author.id, game, main))
 
-    
+        embed = discord.Embed(
+            title="Main Updated",
+            description=f"{game.title()}: **{main}**",
+            color=discord.Color.from_rgb(78, 42, 132),
+        )
+        await ctx.followup.send(embed=embed, ephemeral=True)
+
+
     @profile.command(
             name = "view",
             guild_ids = [GUILD_ID]
@@ -265,11 +279,11 @@ class Profile(commands.Cog):
 
         profile_row = await db.fetch_one(
             "SELECT bio, picture_url FROM profiles WHERE discordid = %s;",
-            (target.id)
+            (target.id,)
         )
         stats_rows = await db.fetch_all(
-            "SELECT game, rank_label, role, main FROM profile_stats WHERE discordid = %s"
-            (target.id)
+            "SELECT game, rank_label, role, main FROM profile_stats WHERE discordid = %s",
+            (target.id,)
         )
         stats_by_game = {row[0]: row for row in stats_rows}
 
@@ -291,27 +305,40 @@ class Profile(commands.Cog):
 class ProfilePaginator(discord.ui.View):
     def __init__(self, requester_id, pages, start_index=0):
         super().__init__(timeout=120)
-        self.requester_id= requester_id
+        self.requester_id = requester_id
         self.pages = pages
-        self.index = start_index,
+        self.index = start_index
         self.update_buttons()
 
     async def interaction_check(self, interaction):
-        return NotImplementedError
+        if interaction.user.id != self.requester_id:
+            await interaction.response.send_message(
+                "This isnt your profile call to flip through!", ephemeral=True
+            )
+            return False
+        return True
+
     
     def update_buttons(self):
-        return NotImplementedError
+        self.back.disabled = (self.index == 0)
+        self.forward.disabled = (self.index == len(self.pages)-1)
     
     @discord.ui.button(label="◀", style=discord.ButtonStyle.secondary)
     async def back(self, button, interaction):
-        return NotImplementedError
+        self.index -= 1
+        self.update_buttons()
+        await interaction.response.edit_message(embed=self.pages[self.index], view=self)
 
     @discord.ui.button(label="▶", style=discord.ButtonStyle.secondary)
     async def forward(self, button, interaction):
-        return NotImplementedError
+        self.index += 1
+        self.update_buttons()
+        await interaction.response.edit_message(embed=self.pages[self.index], view=self)
     
     async def on_timeout(self):
-        return NotImplementedError
+        for child in self.children:
+            child.disabled = True
+        await self.message.edit(view=self)
 
 def setup(bot):
     bot.add_cog(Profile(bot))

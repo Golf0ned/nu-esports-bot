@@ -33,8 +33,28 @@ CREATE TABLE profile_stats (
     game TEXT NOT NULL,
     rank_value INT,
     rank_label TEXT,
-    role TEXT,
-    main TEXT,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (discordid, game)
-)
+);
+
+CREATE TABLE profile_roles (
+    discordid BIGINT NOT NULL,
+    game TEXT NOT NULL,
+    role TEXT NOT NULL,
+    PRIMARY KEY (discordid, game, role)
+);
+
+CREATE TABLE profile_mains (
+    discordid BIGINT NOT NULL,
+    game TEXT NOT NULL,
+    main TEXT NOT NULL,
+    PRIMARY KEY (discordid, game, main)
+);
+
+CREATE TABLE profile_primary_mains (
+    discordid BIGINT NOT NULL,
+    game TEXT NOT NULL,
+    prime TEXT NOT NULL,
+    PRIMARY KEY (discordid, game),
+    FOREIGN KEY (discordid, game, prime) REFERENCES profile_mains (discordid, game, main) ON DELETE CASCADE
+);

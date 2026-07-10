@@ -24,6 +24,7 @@ CREATE TABLE profiles
     discordid BIGINT PRIMARY KEY,
     bio TEXT,
     picture_url TEXT,
+    thumbnail_url TEXT,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 

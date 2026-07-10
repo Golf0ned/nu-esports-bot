@@ -56,17 +56,23 @@ async def mains_autocomplete(ctx: discord.AutocompleteContext):
     game = ctx.options.get("game")
     return [discord.OptionChoice(m) for m in get_mains(game)] if game else []
 
+async def picture_autocomplete(ctx: discord.AutocompleteContext):
+    return ["Main", "Thumbnail"]
+    
 
 def build_home_embed(target, profile_row, total_pages):
     bio = profile_row[0] if profile_row and profile_row[0] else "No bio set."
     picture_url = profile_row[1] if profile_row and profile_row[1] else None
+    thumbnail_url = profile_row[2] if profile_row and profile_row[2] else None
 
     embed = discord.Embed(
         title=f"{target.display_name}'s Profile",
         description=bio,
         color=discord.Color.from_rgb(78, 42, 132),
     )
-    embed.set_thumbnail(url=picture_url or target.display_avatar.url)
+    embed.set_thumbnail(url=thumbnail_url or target.display_avatar.url)
+    if picture_url:
+        embed.set_image(url=picture_url)
     embed.set_footer(text=f"Page 1/{total_pages}")
     return embed
 
@@ -82,6 +88,9 @@ def build_game_embed(target, game, row, page_number, total_pages):
     embed.add_field(name="Rank", value=rank_label, inline=True)
     embed.add_field(name="Role", value=role, inline=True)
     embed.add_field(name="Main", value=main, inline=True)
+    if main:
+        if game == "league":
+            embed.set_thumbnail(url=f"https://static.bigbrain.gg/assets/lol/riot_static/16.13.1/img/champion/{main}.webp")
     embed.set_footer(text=f"Page {page_number}/{total_pages}")
     return embed
 
@@ -92,6 +101,97 @@ class Profile(commands.Cog):
 
     profile = discord.SlashCommandGroup("profile", "Profile tools")
     set_grp = profile.create_subgroup("set", "Set something on your profile")
+
+    @set_grp.command(
+            name = "bio",
+            guild_ids = [GUILD_ID]
+    )
+    async def bio(
+        self,
+        ctx,
+        bio: discord.Option(
+            str,
+            name="bio",
+            description="About you!"
+        )
+    ):
+        await ctx.defer(ephemeral=True)
+
+        sql = """
+            INSERT INTO profiles (discordid, bio, updated_at)
+            VALUES (%s, %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (discordid)
+            DO UPDATE SET
+                bio = EXCLUDED.bio,
+                updated_at = CURRENT_TIMESTAMP;
+        """
+        await db.perform_one(sql, (ctx.author.id, bio))
+
+        embed = discord.Embed(
+            title="Bio Updated",
+            description=f"{bio}",
+            color=discord.Color.from_rgb(78, 42, 132),
+        )
+        await ctx.followup.send(embed=embed, ephemeral=True)
+
+    @set_grp.command(
+            name = "picture",
+            guild_ids = [GUILD_ID]
+    )
+    async def picture(
+        self,
+        ctx,
+        picture: discord.Option(
+            str,
+            name="url",
+            description="URL to picture to set on your profile",
+            default=None
+        ),
+        option: discord.Option(
+            str,
+            name="position",
+            description="Main or thumbnail",
+            autocomplete=picture_autocomplete,
+            default="main"
+        )
+    ):
+        await ctx.defer(ephemeral=True)
+
+        if picture and (not picture.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp"))):
+            await ctx.followup.send("URL must point directly to an image file (.png, .jpg, .gif, .webp).", ephemeral=True)
+            return
+        sql = None
+        option = option.lower()
+        if option == "main":
+            sql = """
+            INSERT INTO profiles (discordid, picture_url, updated_at)
+            VALUES (%s, %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (discordid)
+            DO UPDATE SET
+                picture_url = EXCLUDED.picture_url,
+                updated_at = CURRENT_TIMESTAMP;
+            """
+        elif option == "thumbnail":
+            sql = """
+            INSERT INTO profiles (discordid, thumbnail_url, updated_at)
+            VALUES (%s, %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (discordid)
+            DO UPDATE SET
+                thumbnail_url = EXCLUDED.thumbnail_url,
+                updated_at = CURRENT_TIMESTAMP;
+            """
+
+        await db.perform_one(sql, (ctx.author.id, picture))
+
+        embed = discord.Embed(
+            title="Picture updated",
+            color=discord.Color.from_rgb(78, 42, 132)
+        )
+        embed.set_image(url=picture)
+        try:
+            await ctx.followup.send(embed=embed, ephemeral=True)
+        except discord.HTTPException:
+            await ctx.followup.send("Picture saved, but but Discord couldn't render that image — double check the link works in a browser.", ephemeral=True)
 
     @set_grp.command(
             name = "rank",
@@ -278,7 +378,7 @@ class Profile(commands.Cog):
         target = user or ctx.author
 
         profile_row = await db.fetch_one(
-            "SELECT bio, picture_url FROM profiles WHERE discordid = %s;",
+            "SELECT bio, picture_url, thumbnail_url FROM profiles WHERE discordid = %s;",
             (target.id,)
         )
         stats_rows = await db.fetch_all(

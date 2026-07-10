@@ -58,6 +58,10 @@ async def mains_autocomplete(ctx: discord.AutocompleteContext):
 
 async def picture_autocomplete(ctx: discord.AutocompleteContext):
     return ["Main", "Thumbnail"]
+
+async def primary_autocomplete(ctx: discord.AutocompleteContext):
+    game = ctx.options.get("game")
+    return [discord.OptionChoice(m) for m in get_mains(game)] if game else []
     
 
 def build_home_embed(target, profile_row, total_pages):
@@ -76,21 +80,23 @@ def build_home_embed(target, profile_row, total_pages):
     embed.set_footer(text=f"Page 1/{total_pages}")
     return embed
 
-def build_game_embed(target, game, row, page_number, total_pages):
+def build_game_embed(target, game, row, roles, mains, primary_main, page_number, total_pages):
     rank_label = row[1] if row else "Not set"
-    role = row[2] if row else "Not set"
-    main = row[3] if row else "Not set"
+    role_display = ", ".join(roles) if roles else "Not set"
+    main_display = ", ".join(mains) if mains else "Not set"
 
     embed = discord.Embed(
         title=f"{target.display_name} - {game.title()}",
         color=discord.Color.from_rgb(78, 42, 132),
     )
     embed.add_field(name="Rank", value=rank_label, inline=True)
-    embed.add_field(name="Role", value=role, inline=True)
-    embed.add_field(name="Main", value=main, inline=True)
-    if main:
+    embed.add_field(name="Role", value=role_display, inline=True)
+    embed.add_field(name="Main", value=main_display, inline=True)
+
+    if primary_main:
+        primary_main = primary_main[0].upper() + primary_main[1:].lower()
         if game == "league":
-            embed.set_thumbnail(url=f"https://static.bigbrain.gg/assets/lol/riot_static/16.13.1/img/champion/{main}.webp")
+            embed.set_thumbnail(url=f"https://static.bigbrain.gg/assets/lol/riot_static/16.13.1/img/champion/{primary_main}.webp")
     embed.set_footer(text=f"Page {page_number}/{total_pages}")
     return embed
 
@@ -157,8 +163,8 @@ class Profile(commands.Cog):
     ):
         await ctx.defer(ephemeral=True)
 
-        if picture and (not picture.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp"))):
-            await ctx.followup.send("URL must point directly to an image file (.png, .jpg, .gif, .webp).", ephemeral=True)
+        if picture and (not picture.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"))):
+            await ctx.followup.send("URL must point directly to an image file (.png, .jpg, .gif, .webp, .svg).", ephemeral=True)
             return
         sql = None
         option = option.lower()
@@ -274,38 +280,19 @@ class Profile(commands.Cog):
             name="game",
             description="Game to change something about",
             choices=GAME_CHOICES,
-        ),
-        role: discord.Option(
-            str,
-            name="role",
-            description="The role you play",
-            autocomplete=roles_autocomplete
         )
     ):
         await ctx.defer(ephemeral=True)
 
-        if role not in get_roles(game):
-            await ctx.followup.send(
-                "Invalid role. Please select from dropdown.", ephemeral=True
-            )
-            return
-        sql = '''
-            INSERT INTO profile_stats (discordid, game, role, updated_at)
-            VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
-            ON CONFLICT (discordid, game)
-            DO UPDATE SET
-                role = EXCLUDED.role,
-                updated_at = CURRENT_TIMESTAMP;
-        '''
-
-        await db.perform_one(sql, (ctx.author.id, game, role))
-
-        embed = discord.Embed(
-            title="Role Updated",
-            description=f"{game.title()}: **{role}**",
-            color=discord.Color.from_rgb(78, 42, 132),
+        rows = await db.fetch_all(
+            "SELECT role FROM profile_roles WHERE discordid = %s AND game = %s;",
+            (ctx.author.id , game),
         )
-        await ctx.followup.send(embed=embed, ephemeral=True)
+
+        current_roles = [r[0] for r in rows]
+
+        view = RoleSelectView(requester_id=ctx.author.id, game=game, current_roles=current_roles)
+        await ctx.followup.send("Pick your role(s):", view=view, ephemeral=True)
 
     @set_grp.command(
             name = "main",
@@ -320,40 +307,60 @@ class Profile(commands.Cog):
             description="Game to change something about",
             choices=GAME_CHOICES,
         ),
-        main: discord.Option(
+    ):
+        rows = await db.fetch_all(
+            "SELECT main FROM profile_mains WHERE discordid = %s AND game = %s;",
+            (ctx.author.id, game),
+        )
+        current_mains = [r[0] for r in rows]
+        await ctx.send_modal(MainsModal(requester_id=ctx.author.id, game=game, current_mains=current_mains))
+
+    @set_grp.command(
+            name = "primary",
+            guild_ids = [GUILD_ID]
+    )
+    async def primary(
+        self,
+        ctx,
+        game: discord.Option(
             str,
-            name="main",
-            description="Your main in the game",
-            autocomplete=mains_autocomplete
+            name="game",
+            description="Game to change something about",
+            choices=GAME_CHOICES,
+        ),
+        primary: discord.Option(
+            str,
+            name="primary",
+            description="Used for the little picture on your profile",
+            autocomplete=primary_autocomplete
         )
     ):
         await ctx.defer(ephemeral=True)
-        main = main.lower()
-        main = main[0].upper() + main[1:]
-        
-        if main not in get_mains(game):
-            await ctx.followup.send(
-                "Invalid main. Please select from dropdown.", ephemeral=True
-            )
-            return
-        sql = '''
-            INSERT INTO profile_stats (discordid, game, main, updated_at)
-            VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
+
+        mains = get_mains(game)
+
+        if primary not in mains:
+            await ctx.followup.send(f"{primary} not in your list of mains, {' ,'.join(mains[:-1])} and {mains[-1]}.")
+
+        sql = """
+            INSERT INTO profile_primary_mains (discordid, game, prime)
+            VALUES (%s, %s, %s)
             ON CONFLICT (discordid, game)
             DO UPDATE SET
-                main = EXCLUDED.main,
-                updated_at = CURRENT_TIMESTAMP;
-        '''
+                prime = EXCLUDED.prime
+            """
 
-        await db.perform_one(sql, (ctx.author.id, game, main))
+        await db.perform_one(sql, (ctx.author.id, game, primary))
 
         embed = discord.Embed(
-            title="Main Updated",
-            description=f"{game.title()}: **{main}**",
-            color=discord.Color.from_rgb(78, 42, 132),
+            title="Primary updated",
+            color=discord.Color.from_rgb(78, 42, 132)
         )
-        await ctx.followup.send(embed=embed, ephemeral=True)
 
+        primary = primary[0].upper() + primary[1:].lower()
+        if game == "league":
+            embed.set_image(url=f"https://ddragon.leagueoflegends.com/cdn/img/champion/splash/{primary}_0.jpg")
+        await ctx.followup.send(embed=embed, ephemeral=True)
 
     @profile.command(
             name = "view",
@@ -384,16 +391,39 @@ class Profile(commands.Cog):
             (target.id,)
         )
         stats_rows = await db.fetch_all(
-            "SELECT game, rank_label, role, main FROM profile_stats WHERE discordid = %s",
+            "SELECT game, rank_label FROM profile_stats WHERE discordid = %s",
             (target.id,)
         )
+        role_rows = await db.fetch_all(
+            "SELECT game, role FROM profile_roles WHERE discordid = %s;",
+            (target.id,)
+        )
+        main_rows = await db.fetch_all(
+            "SELECT game, main FROM profile_mains WHERE discordid = %s;",
+            (target.id,)
+        )
+        primary_rows = await db.fetch_all(
+            "SELECT game, prime FROM profile_primary_mains WHERE discordid = %s;",
+            (target.id,)
+        )
+
         stats_by_game = {row[0]: row for row in stats_rows}
+        roles_by_game = {}
+        for g, r in role_rows:
+            roles_by_game.setdefault(g, []).append(r)
+        mains_by_game = {}
+        for g, m in main_rows:
+            mains_by_game.setdefault(g, []).append(m)
+        primary_by_game = {g: p for g, p in primary_rows}
 
         total_pages = len(GAME_CHOICES) +1
         pages = [build_home_embed(target, profile_row, total_pages)]
         for i, g in enumerate(GAME_CHOICES, start=2):
             row = stats_by_game.get(g)
-            pages.append(build_game_embed(target, g, row, i, total_pages))
+            roles = roles_by_game.get(g, [])
+            mains = mains_by_game.get(g, [])
+            primary_main = primary_by_game.get(g)
+            pages.append(build_game_embed(target, g, row, roles, mains, primary_main, i, total_pages))
 
         if game is not None:
             start_index = GAME_CHOICES.index(game) +1
@@ -441,6 +471,98 @@ class ProfilePaginator(discord.ui.View):
         for child in self.children:
             child.disabled = True
         await self.message.edit(view=self)
+
+class RoleSelectView(discord.ui.View):
+    def __init__(self, requester_id, game, current_roles):
+        super().__init__(timeout=120)
+        self.requester_id = requester_id
+        self.game = game
+
+        options = [
+            discord.SelectOption(label=r, value=r, default=(r in current_roles))
+            for r in get_roles(game)
+        ]
+        self.select = discord.ui.Select(
+            placeholder="Choose your role(s)",
+            min_values=0,
+            max_values=len(options),
+            options=options
+        )
+        self.select.callback = self.on_select
+        self.add_item(self.select)
+    
+    async def interaction_check(self, interaction):
+        return interaction.user.id == self.requester_id
+    
+    async def on_select(self, interaction):
+        chosen = self.select.values
+
+        await db.perform_one(
+            "DELETE FROM profile_roles WHERE discordid = %s AND game = %s;",
+            (self.requester_id, self.game)
+        )
+        if chosen:
+            await db.perform_many(
+                "INSERT INTO profile_roles (discordid, game, role) VALUES (%s, %s, %s);",
+                [(self.requester_id, self.game, r) for r in chosen],
+            )
+        
+        await interaction.response.edit_message(
+            content=f"Roles updated: {', '.join(chosen) if chosen else 'None'}",
+            view=None,
+        )
+
+class MainsModal(discord.ui.Modal):
+    def __init__(self, requester_id, game, current_mains):
+        super().__init__(title=f"Set your {game.title()} mains")
+        self.requester_id = requester_id
+        self.game = game
+        self.add_item(
+            discord.ui.InputText(
+                label="Mains (comma-seperated)",
+                placeholder="e.g. Lux, Kayn, Locke",
+                value=", ".join(current_mains),
+                required=False
+            )
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        raw = self.children[0].value or ""
+        candidates = [c.strip() for c in raw.split(",") if c.strip]
+
+        lookup = {m.lower(): m for m in get_mains(self.game)}
+        resolved, invalid = [], []
+        for c in candidates:
+            match = lookup.get(c.lower())
+            (resolved if match else invalid).append(match or c)
+
+        if invalid:
+            await interaction.response.send_message(
+                f"Didn't recognize \"{', '.join(invalid)}. Nothing was saved, double check and try again",
+                ephemeral=True
+            )
+            return
+        
+        await db.perform_one(
+            "DELETE FROM profile_mains WHERE discordid = %s AND game = %s;",
+            (self.requester_id, self.game),
+        )
+        if resolved:
+            await db.perform_many(
+                "INSERT INTO profile_mains (discordid, game, main) VALUES (%s, %s, %s);",
+                [(self.requester_id, self.game, m) for m in resolved]
+            )
+        if len(resolved) == 1:
+            await interaction.response.send_message(
+                f"Main updated to {resolved}.",
+                ephemeral=True
+            )
+            return
+        
+        await interaction.response.send_message(
+            f"Mains updated to {', '.join(resolved[:-1])} and {resolved[-1]}.",
+            ephemeral=True
+        )
 
 def setup(bot):
     bot.add_cog(Profile(bot))

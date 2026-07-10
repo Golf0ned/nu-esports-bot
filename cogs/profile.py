@@ -328,7 +328,9 @@ class Profile(commands.Cog):
         )
     ):
         await ctx.defer(ephemeral=True)
-
+        main = main.lower()
+        main = main[0].upper() + main[1:]
+        
         if main not in get_mains(game):
             await ctx.followup.send(
                 "Invalid main. Please select from dropdown.", ephemeral=True

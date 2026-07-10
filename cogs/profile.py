@@ -23,6 +23,8 @@ def get_mains(game):
 def tier_has_divisions(game, tier):
     return tier not in config.config["profile"]["games"][game]["no_division_tiers"]
 
+
+
 def compute_rank_value(game, tier, division):
     index = get_tiers(game).index(tier)
     divisions = get_divisions(game)
@@ -40,24 +42,48 @@ async def tier_autocomplete(ctx: discord.AutocompleteContext):
     return [discord.OptionChoice(t) for t in get_tiers(game)] if game else []
 
 async def division_autocomplete(ctx: discord.AutocompleteContext):
-    game, tier = ctx.options.get("game"), ctx.options.get("tier")
+    game, tier = ctx.options.get("game")
     if not game or not tier_has_divisions(game, tier):
         return ["1"]
     divisions_per_tier = get_divisions(game)
     return [str(d) for d in range(1, divisions_per_tier+1)]
 
 async def roles_autocomplete(ctx: discord.AutocompleteContext):
-    game, role = ctx.options.get("game"), ctx.options.get("role")
-    if not game or not role:
-        return []
-    return [discord.OptionsChoice(r) for r in get_roles(game)]
+    game = ctx.options.get("game")
+    return [discord.OptionChoice(r) for r in get_roles(game)] if game else []
 
-async def mains_autocomplete(ctx: discord.AutocompleteCotnext):
-    game, main = ctx.options.get("game"), ctx.options.get("main")
-    if not game or not main:
-        return []
-    return [discord.OptionsChoice(m) for m in get_mains(game)]
+async def mains_autocomplete(ctx: discord.AutocompleteContext):
+    game = ctx.options.get("game"), ctx.options.get("main")
+    return [discord.OptionChoice(m) for m in get_mains(game)] if game else []
 
+
+def build_home_embed(target, profile_row, total_pages):
+    bio = profile_row[0] if profile_row and profile_row[0] else "No bio set."
+    picture_url = profile_row[1] if profile_row and profile_row[1] else None
+
+    embed = discord.Embed(
+        title=f"{target.display_name}'s Profile"
+        description=bio,
+        color=discord.Color.from_rgb(78, 42, 132),
+    )
+    embed.set_thumbnail(url=picture_url or target.display_avatar.url)
+    embed.set_footer(text=f"Page 1/{total_pages}")
+    return embed
+
+def build_game_embed(target, game, row, page_number, total_pages):
+    rank_label = row[1] if row else "Not set"
+    role = row[2] if row else "Not set"
+    main = row[3] if row else "Not set"
+
+    embed = discord.Embed(
+        title=f"{target.display_name} - {game.title()}",
+        color=discord.Color.from_rgb(78, 42, 132),
+    )
+    embed.add_field(name="Rank", value=rank_label, inline=True)
+    embed.add_field(name="Role", value=role, inline=True)
+    embed.add_field(name="Main", value=main, inline=True)
+    embed.set_footer(text=f"Page {page_number}/{total_pages}")
+    return embed
 
 
 class Profile(commands.Cog):
@@ -65,7 +91,7 @@ class Profile(commands.Cog):
         self.bot = bot
 
     profile = discord.SlashCommandGroup("profile", "Profile tools")
-    set_grp = discord.create_subgroup("set", "Set something on your profile")
+    set_grp = profile.create_subgroup("set", "Set something on your profile")
 
     @set_grp.command(
             name = "rank",
@@ -93,8 +119,48 @@ class Profile(commands.Cog):
             autocomplete=division_autocomplete,
             default="1",
         )
-    )
-        return NotImplementedError
+    ):
+        await ctx.defer(ephemeral=True)
+
+        if tier not in get_tiers(game):
+            await ctx.followup.send(
+                "Invalid tier. Please select from dropdown.", ephemeral=True
+            )
+            return
+
+        try:
+            division_int = int(division)
+            if division_int > get_divisions(game):
+                await ctx.followup.send(
+                    "Invalid division. Please select from dropdown.", ephemeral=True
+                )
+                return
+        except ValueError:
+            await ctx.followup.send(
+                "Invalid division. Please select from dropdown.", ephemeral=True
+            )
+            return
+
+        rank_value = compute_rank_value(game, tier, division_int)
+        rank_label = format_rank_label(game, tier, division_int)
+
+        sql = """
+            INSERT INTO profile_stats (discordid, game, rank_value, rank_label, updated_at)
+            VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (discordid, game)
+            DO UPDATE SET
+                rank_value = EXCLUDED.rank_value,
+                rank_label = EXCLUDED.rank_label,
+                updated_at = CURRENT_TIMESTAMP;
+        """
+        await db.perform_one(sql, (ctx.author.id, game, rank_value, rank_label))
+
+        embed = discord.Embed(
+            title="Rank Updated",
+            description=f"{game.title()}: **{rank_label}**",
+            color=discord.Color.from_rgb(78, 42, 132),
+        )
+        await ctx.followup.send(embed=embed, ephemeral=True)
 
     @set_grp.command(
             name = "role",
@@ -115,8 +181,24 @@ class Profile(commands.Cog):
             description="The role you play",
             autocomplete=roles_autocomplete
         )
-    )
-        return NotImplementedError
+    ):
+        await ctx.defer(ephemeral=True)
+
+        if role not in get_roles(game):
+            await ctx.followup.send(
+                "Invalid role. Please select from dropdown.", ephemeral=True
+            )
+            return
+        sql = '''
+            INSERT INTO profile_stats (discordid, game, role, updated_at)
+            VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (discordid, game)
+            DO UPDATE SET
+                role = EXCLUDED.role
+                updated_at = CURRENT_TIMESTAMP
+        '''
+
+        await db.preform_one(sql, (ctx.author.id, game, role))
 
     @set_grp.command(
             name = "main",
@@ -137,8 +219,24 @@ class Profile(commands.Cog):
             description="Your main in the game",
             autocomplete=mains_autocomplete
         )
-    )
-        return NotImplementedError
+    ):
+        await ctx.defer(ephemeral=True)
+
+        if main not in get_mains(game):
+            await ctx.followup.send(
+                "Invalid main. Please select from dropdown.", ephemeral=True
+            )
+            return
+        sql = '''
+            INSERT INTO profile_stats (discordid, game, main, updated_at)
+            VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (discordid, game)
+            DO UPDATE SET
+                main = EXCLUDED.main
+                updated_at = CURRENT_TIMESTAMP
+        '''
+
+        await db.preform_one(sql, (ctx.author.id, game, main))
 
     
     @profile.command(
@@ -148,7 +246,7 @@ class Profile(commands.Cog):
     async def view(
         self,
         ctx,
-        user: discordOption(
+        user: discord.Option(
             discord.User,
             description="Defaults to you",
             default=None
@@ -158,122 +256,37 @@ class Profile(commands.Cog):
             name="game",
             description="Game to change something about",
             choices=GAME_CHOICES,
+            default=None
         )
-    )
-        return NotImplementedError
-    
-
-
-
-
-
-    @profile.command(
-        name = "set",
-        description = "Set something on your profile",
-        guild_ids=[GUILD_ID]
-    )
-    async def set(
-        self, 
-        ctx,
-        game: discord.Option(
-            str,
-            name="game",
-            description="Game to change something about",
-            choices=GAME_CHOICES,
-        ),
-        tier: discord.Option(
-            str,
-            name="tier",
-            description="Your rank tier",
-            autocomplete=tier_autocomplete,
-        ),
-        division: discord.Option(
-            str,
-            name="division",
-            description="Your division (if applicable)",
-            autocomplete=division_autocomplete,
-            default="1",
-        )
-    ):
-        await ctx.defer(ephemeral=True)
-
-        if thing not in THINGS:
-            await ctx.followup.send(
-                "Invalid thing. Please select from dropdown.", ephemeral=True
-            )
-            return
-
-        if tier not in get_tiers(game):
-            await ctx.followup.send(
-                "Invalid tier. Please select from dropdown.", ephemeral=True
-            )
-            return
-        
-        try:
-            division_int = int(division)
-            if division_int > get_divisions(game):
-                await ctx.followup.send(
-                "Invalid division. Please select from dropdown.", ephemeral=True
-                )
-                return
-        except ValueError:
-            await ctx.followup.send(
-                "Invalid division. Please select from dropdown.", ephemeral=True
-            )
-            return
-
-        rank_value = compute_rank_value(game, tier, division_int)
-        rank_label = format_rank_label(game, tier, division_int)
-
-        sql = """
-            INSERT INTO player_ranks (discordid, game, rank_value, rank_label, updated_at)
-            VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
-            ON CONFLICT (discordid, game)
-            DO UPDATE SET
-                rank_value = EXCLUDED.rank_value,
-                rank_label = EXCLUDED.rank_label,
-                updated_at = CURRENT_TIMESTAMP;
-        """
-        await db.perform_one(sql, (ctx.author.id, game, rank_value, rank_label))
-
-        embed = discord.Embed(
-            title="Rank Updated",
-            description=f"{game.title()}: **{rank_label}**",
-            color=discord.Color.from_rgb(78, 42, 132),
-        )
-        await ctx.followup.send(embed=embed, ephemeral=True)
-
-
-
-    @rank.command(
-            name="view",
-            description="View a user's profile",
-            guild_ids=[GUILD_ID],
-    )
-    async def view_rank(
-            self,
-            ctx,
-            user: discord.Option(discord.User, description="User to view (defaults to you)", default=None),
     ):
         await ctx.defer()
 
         target = user or ctx.author
 
-        sql = "SELECT game, rank_label FROM player_ranks WHERE discordid = %s ORDER BY game;"
-        rows = await db.fetch_all(sql, (target.id,))
+        profile_row = await db.fetch_one(
+            "SELECT bio, picture_url FROM profiles WHERE discordid = %s;",
+            (target.id)
+        )
+        stats_rows = await db.fetch_all(
+            "SELECT game, rank_label, role, main FROM profile_stats WHERE discordid = %s"
+            (target.id)
+        )
+        stats_by_game = {row[0]: row for row in stats_rows}
 
-        embed = discord.Embed(
-            title=f"{target.display_name}'s Ranks",
-            color=discord.Color.from_rgb(78, 42, 132),
-        ) 
+        total_pages = len(GAME_CHOICES) +1
+        pages = [build_home_embed(target, profile_row, total_pages)]
+        for i, g in enumerate(GAME_CHOICES, start=2):
+            row = stats_by_game.get(g)
+            pages.append(build_game_embed(target, g, row, i, total_pages))
 
-        if not rows:
-            embed.description = "No ranks set."
+        if game is not None:
+            start_index = GAME_CHOICES.index(game) +1
         else:
-            for game, rank_label in rows:
-                embed.add_field(name=game.title(), value=rank_label, inline=True)
-
-        await ctx.followup.send(embed=embed)
+            start_index = 0
+        
+        paginator = ProfilePaginator(requester_id=ctx.author.id, pages=pages,start_index=start_index)
+        message = await ctx.followup.send(embed=pages[start_index], view=paginator)
+        paginator.message = message
 
 class ProfilePaginator(discord.ui.View):
     def __init__(self, requester_id, pages, start_index=0):

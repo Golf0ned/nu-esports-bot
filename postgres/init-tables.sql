@@ -18,3 +18,22 @@ CREATE TABLE reservations
     is_prime_time BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 ); 
+
+CREATE TABLE profiles
+(
+    discordid BIGINT PRIMARY KEY,
+    bio TEXT,
+    picture_url TEXT,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE profile_stats (
+    discordid BIGINT NOT NULL,
+    game TEXT NOT NULL,
+    rank_value INT,
+    rank_label TEXT,
+    role TEXT,
+    main TEXT,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (discordid, game)
+)

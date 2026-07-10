@@ -433,6 +433,7 @@ class Profile(commands.Cog):
         paginator = ProfilePaginator(requester_id=ctx.author.id, pages=pages,start_index=start_index)
         message = await ctx.followup.send(embed=pages[start_index], view=paginator)
         paginator.message = message
+        await message.edit(embed=pages[start_index], view=paginator)
 
 class ProfilePaginator(discord.ui.View):
     def __init__(self, requester_id, pages, start_index=0):

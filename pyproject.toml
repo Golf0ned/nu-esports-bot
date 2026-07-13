@@ -9,6 +9,7 @@ dependencies = [
     "psycopg[binary,pool]==3.2.6",
     "pillow==10.4.0",
     "aiohttp==3.11.11",
+    "emoji>=2.15.0",
 ]
 
 [dependency-groups]

@@ -24,6 +24,7 @@ cogs_list = [
     "game",
     "connections",
     "pugs",
+    "matchmaking",
     "moderation",
     "presence",
     "profile"

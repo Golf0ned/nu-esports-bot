@@ -26,13 +26,16 @@ def get_mains(game):
 def tier_has_divisions(game, tier):
     return tier not in config.config["profile"]["games"][game]["no_division_tiers"]
 
-def is_valid_tag(value):
+def normalize_tag(value):
     if not value:
-        return False
+        return None
+    value = emoji.emojize(value.strip(), language="alias").replace("\uFE0F", "")
     if CUSTOM_EMOJI_RE.fullmatch(value):
-        return True
+        return value
     matches = emoji.emoji_list(value)
-    return len(matches) == 1 and sum(len(m["emoji"]) for m in matches) == len(value)
+    if len(matches) == 1 and sum(len(m["emoji"]) for m in matches) == len(value):
+        return value
+    return None
 
 def compute_rank_value(game, tier, division):
     index = get_tiers(game).index(tier)
@@ -80,7 +83,7 @@ def build_home_embed(target, profile_row, total_pages):
     tag = profile_row[3] if profile_row and profile_row[3] else "💬"
 
     embed = discord.Embed(
-        title=f"{tag}{target.display_name}'s Profile",
+        title=f"{tag} {target.display_name}'s Profile",
         description=bio,
         color=discord.Color.from_rgb(78, 42, 132),
     )
@@ -90,13 +93,13 @@ def build_home_embed(target, profile_row, total_pages):
     embed.set_footer(text=f"Page 1/{total_pages}")
     return embed
 
-def build_game_embed(target, game, row, roles, mains, primary_main, page_number, total_pages):
+def build_game_embed(target, game, row, roles, mains, primary_main, tag, page_number, total_pages):
     rank_label = row[1] if row else "Not set"
     role_display = ", ".join(roles) if roles else "Not set"
     main_display = ", ".join(mains) if mains else "Not set"
 
     embed = discord.Embed(
-        title=f"{target.display_name} - {game.title()}",
+        title=f"{tag} {target.display_name} - {game.title()}",
         color=discord.Color.from_rgb(78, 42, 132),
     )
     embed.add_field(name="Rank", value=rank_label, inline=True)
@@ -382,10 +385,18 @@ class Profile(commands.Cog):
         tag: discord.Option(
             str,
             name="tag",
-            description="Emoji tag to identify yourself by!"
+            description="Emoji tag to identify yourself by!",
+            default=None
         )
     ):
         await ctx.defer(ephemeral=True)
+
+        if tag is not None:
+            normalized = normalize_tag(tag)
+            if normalized is None:
+                await ctx.followup.send("That's not a valid emoji :<", ephemeral=True)
+                return
+            tag = normalized
 
         sql = """
             INSERT INTO profiles (discordid, tag, updated_at)
@@ -399,7 +410,7 @@ class Profile(commands.Cog):
 
         embed = discord.Embed(
             title="Tag Updated!",
-            description=f"{tag}",
+            description=f"New tag: {tag}" if tag else "New Tag: Default",
             color=discord.Color.from_rgb(78, 42, 132),
         )
         await ctx.followup.send(embed=embed, ephemeral=True)
@@ -465,7 +476,8 @@ class Profile(commands.Cog):
             roles = roles_by_game.get(g, [])
             mains = mains_by_game.get(g, [])
             primary_main = primary_by_game.get(g)
-            pages.append(build_game_embed(target, g, row, roles, mains, primary_main, i, total_pages))
+            tag = profile_row[3] if profile_row and profile_row[3] else "💬"
+            pages.append(build_game_embed(target, g, row, roles, mains, primary_main, tag, i, total_pages))
 
         if game is not None:
             start_index = GAME_CHOICES.index(game) +1

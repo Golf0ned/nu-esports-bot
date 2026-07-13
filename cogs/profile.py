@@ -1,4 +1,6 @@
 import discord
+import emoji
+import re
 from discord.ext import commands
 
 from utils import config
@@ -7,6 +9,7 @@ from utils import db
 
 GUILD_ID = config.secrets["discord"]["guild_id"]
 GAME_CHOICES = list(config.config.get("profile", {}).get("games", {}).keys())
+CUSTOM_EMOJI_RE = re.compile(r"^<a?:\w+:\d+>$")
 
 def get_tiers(game):
     return config.config["profile"]["games"][game]["tiers"]
@@ -23,7 +26,13 @@ def get_mains(game):
 def tier_has_divisions(game, tier):
     return tier not in config.config["profile"]["games"][game]["no_division_tiers"]
 
-
+def is_valid_tag(value):
+    if not value:
+        return False
+    if CUSTOM_EMOJI_RE.fullmatch(value):
+        return True
+    matches = emoji.emoji_list(value)
+    return len(matches) == 1 and sum(len(m["emoji"]) for m in matches) == len(value)
 
 def compute_rank_value(game, tier, division):
     index = get_tiers(game).index(tier)
@@ -68,9 +77,10 @@ def build_home_embed(target, profile_row, total_pages):
     bio = profile_row[0] if profile_row and profile_row[0] else "No bio set."
     picture_url = profile_row[1] if profile_row and profile_row[1] else None
     thumbnail_url = profile_row[2] if profile_row and profile_row[2] else None
+    tag = profile_row[3] if profile_row and profile_row[3] else "💬"
 
     embed = discord.Embed(
-        title=f"{target.display_name}'s Profile",
+        title=f"{tag}{target.display_name}'s Profile",
         description=bio,
         color=discord.Color.from_rgb(78, 42, 132),
     )
@@ -362,6 +372,38 @@ class Profile(commands.Cog):
             embed.set_image(url=f"https://ddragon.leagueoflegends.com/cdn/img/champion/splash/{primary}_0.jpg")
         await ctx.followup.send(embed=embed, ephemeral=True)
 
+    @set_grp.command(
+            name = "tag",
+            guild_ids = [GUILD_ID]
+    )
+    async def tag(
+        self,
+        ctx,
+        tag: discord.Option(
+            str,
+            name="tag",
+            description="Emoji tag to identify yourself by!"
+        )
+    ):
+        await ctx.defer(ephemeral=True)
+
+        sql = """
+            INSERT INTO profiles (discordid, tag, updated_at)
+            VALUES (%s, %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (discordid)
+            DO UPDATE SET
+                tag = EXCLUDED.tag,
+                updated_at = CURRENT_TIMESTAMP;
+        """
+        await db.perform_one(sql, (ctx.author.id, tag))
+
+        embed = discord.Embed(
+            title="Tag Updated!",
+            description=f"{tag}",
+            color=discord.Color.from_rgb(78, 42, 132),
+        )
+        await ctx.followup.send(embed=embed, ephemeral=True)
+
     @profile.command(
             name = "view",
             guild_ids = [GUILD_ID]
@@ -387,7 +429,7 @@ class Profile(commands.Cog):
         target = user or ctx.author
 
         profile_row = await db.fetch_one(
-            "SELECT bio, picture_url, thumbnail_url FROM profiles WHERE discordid = %s;",
+            "SELECT bio, picture_url, thumbnail_url, tag FROM profiles WHERE discordid = %s;",
             (target.id,)
         )
         stats_rows = await db.fetch_all(

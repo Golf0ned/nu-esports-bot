@@ -52,10 +52,21 @@ class LobbyView(discord.ui.View):
     def generate_embed(self):
         embed = discord.Embed(
             title=f"{self.session.game.title()} Lobby",
+            description=f"({len(self.session.joined)}/10)",
             color = discord.Color.from_rgb(78,42,132),
         )
-        roster = "\n".join(m.display_name for m in self.session.joined) or "None yet!"
-        embed.add_field(name=f"Joined ({len(self.session.joined)}/10)", value=roster, inline=False)
+        
+        left_rows = ["-"] * 5
+        right_rows = ["-"] * 5
+        for i, member in enumerate(self.session.joined):
+            row = i // 2
+            if i % 2 == 0:
+                left_rows[row] = member.display_name
+            else:
+                right_rows[row] = member.display_name
+
+        embed.add_field(name="\u200b", value="\n".join(left_rows), inline=True)
+        embed.add_field(name="\u200b", value="\n".join(right_rows), inline=True)
         return embed
 
 

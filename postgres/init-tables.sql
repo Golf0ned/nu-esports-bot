@@ -25,6 +25,7 @@ CREATE TABLE profiles
     bio TEXT,
     picture_url TEXT,
     thumbnail_url TEXT,
+    tag TEXT,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 

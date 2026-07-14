@@ -243,10 +243,12 @@ class LobbyView(discord.ui.View):
     
     @discord.ui.button(label="Shuffle", style=discord.ButtonStyle.primary)
     async def shuffle(self, button, interaction):
-        #TODO: add gamehead barrier
-        # if len(self.session.joined) != 10:
-        #     await interaction.response.send_message("Find a full 10 first!", ephemeral=True)
-        #     return
+        if (len(self.session.joined) % 2) != 0:
+            await interaction.response.send_message("You need an even amount of players to shuffle!", ephemeral=True)
+
+        if not any("game head" in role.name.lower() for role in interaction.user.roles):
+            await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
+
         
         if self.session.game == "league":
             rank_by_id, roles_by_id = await get_league_shuffle_data(self.session.joined)

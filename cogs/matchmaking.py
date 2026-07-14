@@ -99,6 +99,7 @@ class MatchmakingSession:
         self.team_names: tuple[(str, str)] = random.choice(TEAM_NAMES)
         self.role_assignments: dict[int, str] = {} #member.id to role
         self.message: discord.Message | None = None
+        self.owner: discord.Member | None = None
 
 class Matchmaking(commands.Cog):
     def __init__(self, bot):
@@ -153,6 +154,8 @@ class Matchmaking(commands.Cog):
         embed = view.generate_embed()
         message = await ctx.followup.send(embed=embed, view=view)
         session.message = message
+        if session.owner is None:
+            session.owner = ctx.author 
     
 class LobbyView(discord.ui.View):
     def __init__(self, session):
@@ -246,10 +249,8 @@ class LobbyView(discord.ui.View):
         if (len(self.session.joined) % 2) != 0:
             await interaction.response.send_message("You need an even amount of players to shuffle!", ephemeral=True)
 
-        if not any("game head" in role.name.lower() for role in interaction.user.roles):
+        if not (any("game head" in role.name.lower() for role in interaction.user.roles) or interaction.user.id == self.session.owner.id):
             await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
-
-        
         if self.session.game == "league":
             rank_by_id, roles_by_id = await get_league_shuffle_data(self.session.joined)
             team_a, team_b, assignments = balance_league_teams(self.session.joined, rank_by_id, roles_by_id)

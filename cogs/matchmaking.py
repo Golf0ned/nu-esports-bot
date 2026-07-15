@@ -8,7 +8,7 @@ from utils import db
 
 GUILD_ID = config.secrets["discord"]["guild_id"]
 GAME_CHOICES = list(config.config.get("profile", {}).get("games", {}).keys())
-DEFAULT_TAG = "🖱️"
+DEFAULT_TAG = {"Lobby": "🖱️", "Winner": "🏆"}
 TEAM_NAMES = [tuple(pair) for pair in config.config["matchmaking"]["team_names"]]
 LEAGUE_LANES = [r for r in config.config["profile"]["games"]["league"]["roles"] if r != "Flex"]
 RANK_JITTER = 2 # determines randomness in shuffling
@@ -36,6 +36,20 @@ def generate_embed(session):
     embed.add_field(name=f"{session.team_names[1]}", value="\n".join(right_rows), inline=True)
     return embed
 
+def generate_postgame_embed(session, team, players):
+    embed = discord.Embed(
+        title = f"{team} Win!",
+        color = discord.Color.from_rgb(78,42,132)
+    )
+    rows = []
+    for i, member in enumerate(players):
+        tag = session.tags.get(member.id, DEFAULT_TAG.get("Winner"))
+        entry = f"{tag} {member.display_name}"
+        rows.append(entry)
+
+    embed.add_field(name="Players", value="\n".join(rows), inline=True)
+    return embed
+
 def generate_results_embed(session):
     embed = discord.Embed(
         title=f"{session.game.title()} Lobby — Teams",
@@ -49,7 +63,7 @@ def generate_results_embed(session):
         )
         rows = []
         for member in ordered:
-            tag = session.tags.get(member.id, DEFAULT_TAG)
+            tag = session.tags.get(member.id, DEFAULT_TAG.get("Lobby"))
             lane = session.role_assignments.get(member.id, "?")
             rows.append(f"**{lane}** — {tag} {member.display_name}")
         return "\n".join(rows) if rows else "-"
@@ -177,6 +191,22 @@ def swap_slots(session, id_a, id_b):
 
     return True
 
+async def change_win_loss(session, winners, losers) -> None:
+
+    sqlWin = '''
+            INSERT INTO profile_stats (discordid, game, wins)
+            VALUES (%s, %s, 1)
+            ON CONFLICT (discordid, game) DO UPDATE SET wins = profile_stats.wins + 1;
+        '''
+    sqlLose = '''
+            INSERT INTO profile_stats (discordid, game, losses)
+            VALUES (%s, %s, 1)
+            ON CONFLICT (discordid, game) DO UPDATE SET losses = profile_stats.losses + 1;
+    '''
+    await db.perform_many(sqlWin, [(w.id, session.game) for w in winners],)
+    await db.perform_many(sqlLose, [(m.id, session.game) for m in losers],)
+
+
 class MatchmakingSession:
     def __init__(self, game):
         self.game = game
@@ -208,14 +238,14 @@ class Matchmaking(commands.Cog):
         ),
         teamOne: discord.Option(
             str,
-            name="team_one",
-            description="Team one's name",
+            name="team_a",
+            description="Team A's name",
             default=None
         ),
         teamTwo: discord.Option(
             str,
-            name="team_two",
-            description="Team two's name",
+            name="team_b",
+            description="Team B's name",
             default=None
         ),
     ):
@@ -233,6 +263,8 @@ class Matchmaking(commands.Cog):
         else:
             session = MatchmakingSession(game)
             self.active_sessions[key] = session
+
+        session.key = key
 
         if teamOne:
             session.team_names = (teamOne, session.team_names[1])
@@ -331,26 +363,68 @@ class WinnerSelectView(discord.ui.View):
         super().__init__(timeout=180)
         self.session = session
 
-    @discord.ui.button(label="Team One", style=discord.ButtonStyle.primary)
-    async def team_one(self, button, interaction):
+        team_a_button = discord.ui.Button(label=session.team_names[0], style=discord.ButtonStyle.primary)
+        team_a_button.callback = self.team_a
+        self.add_item(team_a_button)
+
+        team_b_button = discord.ui.Button(label=session.team_names[1], style=discord.ButtonStyle.primary)
+        team_b_button.callback = self.team_b
+        self.add_item(team_b_button)
+
+        back_button = discord.ui.Button(label="Back", style=discord.ButtonStyle.success)
+        back_button.callback = self.back
+        self.add_item(back_button)
+
+    async def team_a(self, interaction):
         if not has_privilege(self.session, interaction):
             await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
             return
-        return NotImplementedError
+        
+        await change_win_loss(self.session, self.session.team_a, self.session.team_b)
+        await self.session.message.edit(
+            embed=generate_postgame_embed(self.session, self.session.team_names[0], self.session.team_a),
+            view=PostgameView(self.session),
+        )
+
+        cog = interaction.client.get_cog("Matchmaking")
+        cog.active_sessions.pop(self.session.key, None)
+
+        await interaction.response.defer()
+        await interaction.delete_original_response()
     
-    @discord.ui.button(label="Team Two", style=discord.ButtonStyle.primary)
-    async def team_two(self, button, interaction):
+    async def team_b(self, interaction):
         if not has_privilege(self.session, interaction):
             await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
             return
-        return NotImplementedError
+        
+        await change_win_loss(self.session, self.session.team_b, self.session.team_a)
+        await self.session.message.edit(
+            embed=generate_postgame_embed(self.session, self.session.team_names[1], self.session.team_b),
+            view=PostgameView(self.session),
+        )
+
+        cog = interaction.client.get_cog("Matchmaking")
+        cog.active_sessions.pop(self.session.key, None)
+
+        await interaction.response.defer()
+        await interaction.delete_original_response()
     
-    @discord.ui.button(label="Back", style=discord.ButtonStyle.success)
-    async def back(self, button, interaction):
+    async def back(self, interaction):
         if not has_privilege(self.session, interaction):
             await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
             return
         await interaction.response.edit_message(embed=generate_embed(self.session), view=AdminView(self.session))
+
+class PostgameView(discord.ui.View):
+    def __init__(self, session):
+        super().__init__(timeout=180)
+        self.session = session
+
+    @discord.ui.button(label="showwins", style=discord.ButtonStyle.primary)
+    async def showwins(self, button, interaction):
+        row = await db.fetch_one("SELECT wins, losses FROM profile_stats WHERE discordid = %s AND game = %s;", (interaction.user.id, self.session.game))
+        wins, losses = row if row else (0, 0)
+        await interaction.response.send_message(f"your wins: {wins}\nyour losses: {losses}", ephemeral=True)
 
 class AdminView(discord.ui.View):
     def __init__(self, session):

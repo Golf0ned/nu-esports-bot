@@ -34,6 +34,8 @@ CREATE TABLE profile_stats (
     game TEXT NOT NULL,
     rank_value INT,
     rank_label TEXT,
+    wins INT NOT NULL DEFAULT 0,
+    losses INT NOT NULL DEFAULT 0,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (discordid, game)
 );

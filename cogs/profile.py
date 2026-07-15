@@ -73,7 +73,13 @@ async def picture_autocomplete(ctx: discord.AutocompleteContext):
 
 async def primary_autocomplete(ctx: discord.AutocompleteContext):
     game = ctx.options.get("game")
-    return [discord.OptionChoice(m) for m in get_mains(game)] if game else []
+    if not game:
+        return []
+    rows = await db.fetch_all(
+        "SELECT main FROM profile_mains WHERE discordid = %s AND game = %s;",
+        (ctx.interaction.user.id, game),
+    )
+    return [discord.OptionChoice(r[0]) for r in rows]
     
 
 def build_home_embed(target, profile_row, total_pages):
@@ -105,6 +111,8 @@ def build_game_embed(target, game, row, roles, mains, primary_main, tag, page_nu
     embed.add_field(name="Rank", value=rank_label, inline=True)
     embed.add_field(name="Role", value=role_display, inline=True)
     embed.add_field(name="Main", value=main_display, inline=True)
+    embed.add_field(name="Wins", value="X", inline=True)
+    embed.add_field(name="Losses", value="Y", inline=True)
 
     if primary_main:
         primary_main = primary_main[0].upper() + primary_main[1:].lower()

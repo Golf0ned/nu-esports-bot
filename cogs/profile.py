@@ -83,7 +83,7 @@ async def primary_autocomplete(ctx: discord.AutocompleteContext):
     return [discord.OptionChoice(r[0]) for r in rows]
     
 
-def build_home_embed(target, profile_row, total_pages):
+def build_home_embed(target, profile_row, total_pages, total_wins, total_losses):
     bio = profile_row[0] if profile_row and profile_row[0] else "No bio set."
     picture_url = profile_row[1] if profile_row and profile_row[1] else None
     thumbnail_url = profile_row[2] if profile_row and profile_row[2] else None
@@ -91,9 +91,11 @@ def build_home_embed(target, profile_row, total_pages):
 
     embed = discord.Embed(
         title=f"{tag} {target.display_name}'s Profile",
-        description=bio,
         color=discord.Color.from_rgb(78, 42, 132),
     )
+    embed.add_field(name="Bio", value=bio, inline=False)
+    embed.add_field(name="Overall Record", value=f"{total_wins}W - {total_losses}L", inline=True)
+    embed.add_field(name="Member Since", value=f"<t:{int(target.joined_at.timestamp())}:D>", inline=True)
     embed.set_thumbnail(url=thumbnail_url or target.display_avatar.url)
     if picture_url:
         embed.set_image(url=picture_url)
@@ -365,6 +367,7 @@ class Profile(commands.Cog):
 
         if primary not in mains:
             await ctx.followup.send(f"{primary} not in your list of mains, {' ,'.join(mains[:-1])} and {mains[-1]}.")
+            return
 
         sql = """
             INSERT INTO profile_primary_mains (discordid, game, prime)
@@ -434,7 +437,7 @@ class Profile(commands.Cog):
         self,
         ctx,
         user: discord.Option(
-            discord.User,
+            discord.Member,
             description="Defaults to you",
             default=None
         ),
@@ -479,10 +482,20 @@ class Profile(commands.Cog):
         for g, m in main_rows:
             mains_by_game.setdefault(g, []).append(m)
         primary_by_game = {g: p for g, p in primary_rows}
+        total_wins = sum(row[2] for row in stats_rows)
+        total_losses = sum(row[3] for row in stats_rows)
 
-        total_pages = len(GAME_CHOICES) +1
-        pages = [build_home_embed(target, profile_row, total_pages)]
-        for i, g in enumerate(GAME_CHOICES, start=2):
+        games_with_data = {
+            g for g in GAME_CHOICES if g in stats_by_game or roles_by_game.get(g) or mains_by_game.get(g) or g in primary_by_game
+        }
+        if game is not None:
+            games_with_data.add(game)
+
+        pages_games = [g for g in GAME_CHOICES if g in games_with_data]
+
+        total_pages = len(pages_games) + 1
+        pages = [build_home_embed(target, profile_row, total_pages, total_wins, total_losses)]
+        for i, g in enumerate(pages_games, start=2):
             row = stats_by_game.get(g)
             roles = roles_by_game.get(g, [])
             mains = mains_by_game.get(g, [])
@@ -491,7 +504,7 @@ class Profile(commands.Cog):
             pages.append(build_game_embed(target, g, row, roles, mains, primary_main, tag, i, total_pages))
 
         if game is not None:
-            start_index = GAME_CHOICES.index(game) +1
+            start_index = pages_games.index(game) +1
         else:
             start_index = 0
         
@@ -595,7 +608,7 @@ class MainsModal(discord.ui.Modal):
 
     async def callback(self, interaction: discord.Interaction):
         raw = self.children[0].value or ""
-        candidates = [c.strip() for c in raw.split(",") if c.strip]
+        candidates = [c.strip() for c in raw.split(",") if c.strip()]
 
         lookup = {m.lower(): m for m in get_mains(self.game)}
         resolved, invalid = [], []
@@ -605,7 +618,7 @@ class MainsModal(discord.ui.Modal):
 
         if invalid:
             await interaction.response.send_message(
-                f"Didn't recognize \"{', '.join(invalid)}. Nothing was saved, double check and try again",
+                f"Didn't recognize \"{', '.join(invalid)}\". Nothing was saved, double check and try again",
                 ephemeral=True
             )
             return

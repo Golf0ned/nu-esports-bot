@@ -11,6 +11,11 @@ GAME_CHOICES = list(config.config.get("profile", {}).get("games", {}).keys())
 DEFAULT_TAG = {"Lobby": "🖱️", "Winner": "🏆"}
 TEAM_NAMES = [tuple(pair) for pair in config.config["matchmaking"]["team_names"]]
 LEAGUE_LANES = [r for r in config.config["profile"]["games"]["league"]["roles"] if r != "Flex"]
+VAL_ROLES = [r for r in config.config["profile"]["games"]["valorant"]["roles"] if r != "Flex"]
+GAME_CATEGORIES = {
+    "league": LEAGUE_LANES,
+    "valorant": VAL_ROLES,
+}
 RANK_JITTER = 2 # determines randomness in shuffling
 
 
@@ -25,7 +30,7 @@ def generate_embed(session):
     left_rows = ["-"] * 5
     right_rows = ["-"] * 5
     for i, member in enumerate(session.joined):
-        tag = session.tags.get(member.id, DEFAULT_TAG)
+        tag = session.tags.get(member.id, DEFAULT_TAG.get("Lobby"))
         entry = f"{tag} {member.display_name}"
         row = i // 2
         if i % 2 == 0:
@@ -55,7 +60,7 @@ def generate_match_embed(session):
         title=f"{session.game.title()} Lobby — Teams",
         color=discord.Color.from_rgb(78, 42, 132),
     )
-    lane_order = {lane: i for i, lane in enumerate(LEAGUE_LANES)}
+    lane_order = {lane: i for i, lane in enumerate(GAME_CATEGORIES[session.game])}
     def team_rows(team):
         ordered = sorted(
             team,
@@ -98,10 +103,10 @@ async def get_game_shuffle_data(joined, game):
     
     return rank_by_id, roles_by_id
 
-def balance_league_teams(joined, rank_by_id, roles_by_id):
-    lanes = LEAGUE_LANES.copy()
-    random.shuffle(lanes)
-    lanes = lanes[: len(joined) // 2] #AA
+def balance_teams(game, joined, rank_by_id, roles_by_id):
+    categories = GAME_CATEGORIES[game].copy()
+    random.shuffle(categories)
+    categories = categories[: len(joined) // 2]
 
     effective_rank = {
         m.id: rank_by_id[m.id] + random.uniform(-RANK_JITTER, RANK_JITTER)
@@ -113,12 +118,12 @@ def balance_league_teams(joined, rank_by_id, roles_by_id):
     team_a_total, team_b_total = 0, 0
     assignments = {}
 
-    for lane in lanes:
-        lane_pool = [m for m in remaining if lane in roles_by_id[m.id]]
-        lane_pool_ids = {m.id for m in lane_pool}
-        flex_pool = [m for m in remaining if "Flex" in roles_by_id[m.id] and m.id not in lane_pool_ids]
+    for category in categories:
+        category_pool = [m for m in remaining if category in roles_by_id[m.id]]
+        category_pool_ids = {m.id for m in category_pool}
+        flex_pool = [m for m in remaining if "Flex" in roles_by_id[m.id] and m.id not in category_pool_ids]
 
-        candidates = lane_pool
+        candidates = category_pool
         if len(candidates) < 2:
             candidate_ids = {m.id for m in candidates}
             needed = 2 - len(candidates)
@@ -142,9 +147,20 @@ def balance_league_teams(joined, rank_by_id, roles_by_id):
             team_b_total += effective_rank[first.id]
             team_a_total += effective_rank[second.id]
 
-        assignments[first.id] = lane
-        assignments[second.id] = lane
+        assignments[first.id] = category
+        assignments[second.id] = category
         remaining = [m for m in remaining if m.id not in (first.id, second.id)]
+
+    remaining_sorted = sorted(remaining, key=lambda m: effective_rank[m.id], reverse=True)
+    for m in remaining_sorted:
+        if team_a_total <= team_b_total:
+            team_a.append(m)
+            team_a_total += effective_rank[m.id]
+
+        else:
+            team_b.append(m)
+            team_b_total += effective_rank[m.id]
+        assignments[m.id] = roles_by_id[m.id][0]
 
     return team_a, team_b, assignments
 
@@ -217,7 +233,7 @@ class MatchmakingSession:
         self.team_names: tuple[(str, str)] = random.choice(TEAM_NAMES)
         self.role_assignments: dict[int, str] = {} #member.id to role
         self.message: discord.Message | None = None
-        self.admin_panels: dict[discord.Member, discord.InteractionMessage] = {}
+        self.admin_panels: dict[int, discord.InteractionMessage] = {}
         self.owner: discord.Member | None = None
 
 class Matchmaking(commands.Cog):
@@ -293,7 +309,7 @@ class LobbyView(discord.ui.View):
             return
         
         row = await db.fetch_one("SELECT tag FROM profiles WHERE discordid = %s;", (interaction.user.id,))
-        self.session.tags[interaction.user.id] = row[0] if row and row[0] else DEFAULT_TAG
+        self.session.tags[interaction.user.id] = row[0] if row and row[0] else DEFAULT_TAG.get("Lobby")
 
         self.session.joined.append(interaction.user)
         self.session.team_a = []
@@ -440,20 +456,16 @@ class AdminView(discord.ui.View):
         if not has_privilege(self.session, interaction):
             await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
             return
+        
+        rank_by_id, roles_by_id = await get_game_shuffle_data(self.session.joined, self.session.game)
+        team_a, team_b, assignments = balance_teams(self.session.game, self.session.joined, rank_by_id, roles_by_id)
+        self.session.team_a = team_a
+        self.session.team_b = team_b
+        self.session.role_assignments = assignments
 
-        if self.session.game == "league":
-            rank_by_id, roles_by_id = await get_game_shuffle_data(self.session.joined, 'league')
-            team_a, team_b, assignments = balance_league_teams(self.session.joined, rank_by_id, roles_by_id)
-            self.session.team_a = team_a
-            self.session.team_b = team_b
-            self.session.role_assignments = assignments
-            await self.session.message.edit(embed=generate_embed(self.session), view=LobbyView(self.session))
-            await interaction.response.edit_message(embed=generate_embed(self.session), view=self)
-            await refresh_admin_panels(self.session)
-        elif self.session.game == "league":
-            rank_by_id, roles_by_id = await get_game_shuffle_data(self.session.joined, 'valorant')
-        else:
-            await interaction.response.send_message("Val TBD", ephemeral=True)
+        await self.session.message.edit(embed=generate_embed(self.session), view=LobbyView(self.session))
+        await interaction.response.edit_message(embed=generate_embed(self.session), view=self)
+        await refresh_admin_panels(self.session)
 
     @discord.ui.button(label="Swap", style=discord.ButtonStyle.secondary)
     async def swap(self, button, interaction):

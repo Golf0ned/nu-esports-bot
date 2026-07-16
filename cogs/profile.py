@@ -1,6 +1,7 @@
 import discord
 import emoji
 import re
+import random
 from discord.ext import commands
 
 from utils import config
@@ -582,10 +583,11 @@ class MainsModal(discord.ui.Modal):
         super().__init__(title=f"Set your {game.title()} mains")
         self.requester_id = requester_id
         self.game = game
+        example_mains = ", ".join(random.sample(get_mains(game), 3))
         self.add_item(
             discord.ui.InputText(
                 label="Mains (comma-seperated)",
-                placeholder="e.g. Lux, Kayn, Locke",
+                placeholder=f"e.g. {example_mains}",
                 value=", ".join(current_mains),
                 required=False
             )

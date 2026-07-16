@@ -101,6 +101,8 @@ def build_home_embed(target, profile_row, total_pages):
 
 def build_game_embed(target, game, row, roles, mains, primary_main, tag, page_number, total_pages):
     rank_label = row[1] if row else "Not set"
+    wins = row[2] if row else "N/A"
+    losses = row[3] if row else "N/A"
     role_display = ", ".join(roles) if roles else "Not set"
     main_display = ", ".join(mains) if mains else "Not set"
 
@@ -111,11 +113,11 @@ def build_game_embed(target, game, row, roles, mains, primary_main, tag, page_nu
     embed.add_field(name="Rank", value=rank_label, inline=True)
     embed.add_field(name="Role", value=role_display, inline=True)
     embed.add_field(name="Main", value=main_display, inline=True)
-    embed.add_field(name="Wins", value="X", inline=True)
-    embed.add_field(name="Losses", value="Y", inline=True)
+    embed.add_field(name="Wins", value=f"{wins}", inline=True)
+    embed.add_field(name="Losses", value=f"{losses}", inline=True)
 
     if primary_main:
-        primary_main = primary_main[0].upper() + primary_main[1:].lower()
+        primary_main = (primary_main[0].upper() + primary_main[1:].lower()).replace(" ", "")
         if game == "league":
             embed.set_thumbnail(url=f"https://static.bigbrain.gg/assets/lol/riot_static/16.13.1/img/champion/{primary_main}.webp")
     embed.set_footer(text=f"Page {page_number}/{total_pages}")
@@ -452,7 +454,7 @@ class Profile(commands.Cog):
             (target.id,)
         )
         stats_rows = await db.fetch_all(
-            "SELECT game, rank_label FROM profile_stats WHERE discordid = %s",
+            "SELECT game, rank_label, wins, losses FROM profile_stats WHERE discordid = %s",
             (target.id,)
         )
         role_rows = await db.fetch_all(

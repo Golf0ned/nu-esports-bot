@@ -16,7 +16,7 @@ RANK_JITTER = 2 # determines randomness in shuffling
 
 def generate_embed(session):
     if session.role_assignments:
-        return generate_results_embed(session)
+        return generate_match_embed(session)
     embed = discord.Embed(
         title=f"{session.game.title()} Lobby",
         description=f"({len(session.joined)}/10)",
@@ -50,7 +50,7 @@ def generate_postgame_embed(session, team, players):
     embed.add_field(name="Players", value="\n".join(rows), inline=True)
     return embed
 
-def generate_results_embed(session):
+def generate_match_embed(session):
     embed = discord.Embed(
         title=f"{session.game.title()} Lobby — Teams",
         color=discord.Color.from_rgb(78, 42, 132),
@@ -191,7 +191,7 @@ def swap_slots(session, id_a, id_b):
 
     return True
 
-async def change_win_loss(session, winners, losers) -> None:
+async def update_record(session, winners, losers) -> None:
 
     sqlWin = '''
             INSERT INTO profile_stats (discordid, game, wins)
@@ -380,7 +380,7 @@ class WinnerSelectView(discord.ui.View):
             await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
             return
         
-        await change_win_loss(self.session, self.session.team_a, self.session.team_b)
+        await update_record(self.session, self.session.team_a, self.session.team_b)
         await self.session.message.edit(
             embed=generate_postgame_embed(self.session, self.session.team_names[0], self.session.team_a),
             view=PostgameView(self.session),
@@ -397,7 +397,7 @@ class WinnerSelectView(discord.ui.View):
             await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
             return
         
-        await change_win_loss(self.session, self.session.team_b, self.session.team_a)
+        await update_record(self.session, self.session.team_b, self.session.team_a)
         await self.session.message.edit(
             embed=generate_postgame_embed(self.session, self.session.team_names[1], self.session.team_b),
             view=PostgameView(self.session),

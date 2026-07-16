@@ -442,12 +442,6 @@ class PostgameView(discord.ui.View):
         super().__init__(timeout=180)
         self.session = session
 
-    @discord.ui.button(label="showwins", style=discord.ButtonStyle.primary)
-    async def showwins(self, button, interaction):
-        row = await db.fetch_one("SELECT wins, losses FROM profile_stats WHERE discordid = %s AND game = %s;", (interaction.user.id, self.session.game))
-        wins, losses = row if row else (0, 0)
-        await interaction.response.send_message(f"your wins: {wins}\nyour losses: {losses}", ephemeral=True)
-
 class AdminView(discord.ui.View):
     def __init__(self, session):
         super().__init__(timeout=180)

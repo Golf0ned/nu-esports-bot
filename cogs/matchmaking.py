@@ -72,18 +72,18 @@ def generate_match_embed(session):
     return embed
 
 
-async def get_league_shuffle_data(joined):
+async def get_game_shuffle_data(joined, game):
     ids = [m.id for m in joined]
 
     rank_rows = await db.fetch_all(
-        "SELECT discordid, rank_value FROM profile_stats WHERE discordid = ANY(%s) AND game = 'league';",
-        (ids,),
+        "SELECT discordid, rank_value FROM profile_stats WHERE discordid = ANY(%s) AND game = %s;",
+        (ids, game),
     )
-    rank_by_id = {discordid: rank_value for discordid, rank_value in rank_rows if rank_rows is not None}
+    rank_by_id = {discordid: rank_value for discordid, rank_value in rank_rows if rank_value is not None}
 
     role_rows = await db.fetch_all(
-        "SELECT discordid, role FROM profile_roles WHERE discordid = ANY(%s) AND game = 'league';",
-        (ids,),
+        "SELECT discordid, role FROM profile_roles WHERE discordid = ANY(%s) AND game = %s;",
+        (ids, game),
     )
     roles_by_id = {}
     for discordid, role in role_rows:
@@ -442,7 +442,7 @@ class AdminView(discord.ui.View):
             return
 
         if self.session.game == "league":
-            rank_by_id, roles_by_id = await get_league_shuffle_data(self.session.joined)
+            rank_by_id, roles_by_id = await get_game_shuffle_data(self.session.joined, 'league')
             team_a, team_b, assignments = balance_league_teams(self.session.joined, rank_by_id, roles_by_id)
             self.session.team_a = team_a
             self.session.team_b = team_b
@@ -450,6 +450,8 @@ class AdminView(discord.ui.View):
             await self.session.message.edit(embed=generate_embed(self.session), view=LobbyView(self.session))
             await interaction.response.edit_message(embed=generate_embed(self.session), view=self)
             await refresh_admin_panels(self.session)
+        elif self.session.game == "league":
+            rank_by_id, roles_by_id = await get_game_shuffle_data(self.session.joined, 'valorant')
         else:
             await interaction.response.send_message("Val TBD", ephemeral=True)
 

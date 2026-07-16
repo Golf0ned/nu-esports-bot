@@ -92,6 +92,24 @@ gameroom:
 
 teams:
 
+profile:
+  games:
+    valorant:
+      roles: [Duelist, Initiator, Controller, Sentinel, Flex]
+      tiers: [Iron, Bronze, Silver, Gold, Platinum, Diamond, Ascendant, Immortal, Radiant]
+      divisions: 3
+      no_division_tiers: [Radiant]
+    league:
+      roles: [Top, Jungle, Mid, Bot, Support, Flex]
+      tiers: [Iron, Bronze, Silver, Gold, Platinum, Emerald, Diamond, Master, Grandmaster, Challenger]
+      divisions: 4
+      no_division_tiers: [Master, Grandmaster, Challenger]
+    overwatch:
+      roles: [Tank, Damage, Support, Flex]
+      tiers: [Bronze, Silver, Gold, Platinum, Diamond, Master, Grandmaster, Champion, Top 500]
+      divisions: 5
+      no_division_tiers: [Top 500]
+
 valorant:
   maps: # Release order
     - 'Bind'
@@ -133,13 +151,257 @@ valorant:
     - 'Clove'
     - 'Vyse'
     - 'Tejo'
-    - "Waylay"
+    - 'Waylay'
+    - 'Veto'
+    - 'Miks'
   agents_roles:
     controller: [0, 2, 14, 19, 23]
     duelist: [6, 7, 8, 10, 13, 17, 22, 26]
     initiator: [4, 9, 12, 15, 18, 20, 25]
     sentinel: [1, 3, 5, 11, 16, 21, 24] # Viper's here for better randomized teams
 
+league:
+  lanes:
+    - Top
+    - Jungle
+    - Middle
+    - Bottom
+    - Support
+  agents: # Alphabetically
+    - Aatrox
+    - Ahri
+    - Akali
+    - Akshan
+    - Alistar
+    - Ambessa
+    - Amumu
+    - Anivia
+    - Annie
+    - Aphelios
+    - Ashe
+    - Aurelion Sol
+    - Aurora
+    - Azir
+    - Bard
+    - Bel'Veth
+    - Blitzcrank
+    - Brand
+    - Braum
+    - Briar
+    - Caitlyn
+    - Camille
+    - Cassiopeia
+    - Cho'Gath
+    - Corki
+    - Darius
+    - Diana
+    - Dr. Mundo
+    - Draven
+    - Ekko
+    - Elise
+    - Evelynn
+    - Ezreal
+    - Fiddlesticks
+    - Fiora
+    - Fizz
+    - Galio
+    - Gangplank
+    - Garen
+    - Gnar
+    - Gragas
+    - Graves
+    - Gwen
+    - Hecarim
+    - Heimerdinger
+    - Hwei
+    - Illaoi
+    - Irelia
+    - Ivern
+    - Janna
+    - Jarvan IV
+    - Jax
+    - Jayce
+    - Jhin
+    - Jinx
+    - K'Sante
+    - Kai'Sa
+    - Kalista
+    - Karma
+    - Karthus
+    - Kassadin
+    - Katarina
+    - Kayle
+    - Kayn
+    - Kennen
+    - Kha'Zix
+    - Kindred
+    - Kled
+    - Kog'Maw
+    - LeBlanc
+    - Lee Sin
+    - Leona
+    - Lillia
+    - Lissandra
+    - Locke
+    - Lucian
+    - Lulu
+    - Lux
+    - Malphite
+    - Malzahar
+    - Maokai
+    - Master Yi
+    - Mel
+    - Milio
+    - Miss Fortune
+    - Mordekaiser
+    - Morgana
+    - Naafiri
+    - Nami
+    - Nasus
+    - Nautilis
+    - Neeko
+    - Nidalee
+    - Nilah
+    - Nocture
+    - Nunu & Willump
+    - Olaf
+    - Orianna
+    - Ornn
+    - Pantheon
+    - Poppy
+    - Pyke
+    - Qiyana
+    - Quinn
+    - Rakan
+    - Rammus
+    - Rek'Sai
+    - Rell
+    - Rentata Glasc
+    - Renekton
+    - Rengar
+    - Riven
+    - Rumble
+    - Ryze
+    - Samira
+    - Sejuani
+    - Senna
+    - Seraphine
+    - Sett
+    - Shaco
+    - Shen
+    - Shyvana
+    - Singed
+    - Sion
+    - Sivir
+    - Skarner
+    - Smolder
+    - Sona
+    - Soraka
+    - Swain
+    - Sylas
+    - Syndra
+    - Tahm Kench
+    - Taliyah
+    - Talon
+    - Taric
+    - Teemo
+    - Thresh
+    - Tristana
+    - Trundle
+    - Tryndamere
+    - Twisted Fate
+    - Twitch
+    - Udyr
+    - Urgot
+    - Varus
+    - Vayne
+    - Veigar
+    - Vel'Koz
+    - Vex
+    - Vi
+    - Viego
+    - Viktor
+    - Vladimir
+    - Volobear
+    - Warwick
+    - Wukong
+    - Xayah
+    - Xerath
+    - Xin Zhao
+    - Yasuo
+    - Yone
+    - Yorick
+    - Yunara
+    - Yuumi
+    - Zaahen
+    - Zac
+    - Zed
+    - Zeri
+    - Ziggs
+    - Zilean
+    - Zoe
+    - Zyra
+
+overwatch:
+  agents:
+    - Shion
+    - Ana
+    - Anran
+    - Ashe
+    - Baptiste 
+    - Bastion 
+    - Brigitte 
+    - Cassidy 
+    - D.Va 
+    - Domina 
+    - Doomfist 
+    - Echo 
+    - Emre 
+    - Freja 
+    - Genji 
+    - Hanzo 
+    - Hazard 
+    - Illari 
+    - Jetpack Cat 
+    - Junker Queen 
+    - Junkrat 
+    - Juno 
+    - Kiriko
+    - Lifeweaver 
+    - Lúcio 
+    - Mauga 
+    - Mei 
+    - Mercy 
+    - Mizuki 
+    - Moira 
+    - Orisa 
+    - Pharah 
+    - Ramattra 
+    - Reaper 
+    - Reinhardt 
+    - Roadhog 
+    - Sierra 
+    - Sigma 
+    - Sojurn 
+    - 'Soldier: 76'
+    - Sombra 
+    - Symmetra 
+    - Torbjörn
+    - Tracer 
+    - Vendetta 
+    - Venture 
+    - Widowmaker 
+    - Winston 
+    - Wrecking Ball 
+    - Wuyang 
+    - Zarya 
+    - Zenyatta
+
+matchmaking:
+  team_names:
+    # - [Team name Left, Team name Right]
+    # - [Team name Left, Team name Right]
+    # - ...
 
 reservations:
   # where the outputs of reservations gets sent to (ie gameroom staff channel)

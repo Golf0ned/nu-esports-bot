@@ -301,6 +301,7 @@ class LobbyView(discord.ui.View):
     def __init__(self, session):
         super().__init__(timeout=None)
         self.session = session
+        self.join.disabled = len(session.joined) >= 10
 
     @discord.ui.button(label="Join", style=discord.ButtonStyle.success)
     async def join(self, button, interaction):

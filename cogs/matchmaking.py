@@ -10,11 +10,10 @@ GUILD_ID = config.secrets["discord"]["guild_id"]
 GAME_CHOICES = list(config.config.get("profile", {}).get("games", {}).keys())
 DEFAULT_TAG = {"Lobby": "🖱️", "Winner": "🏆"}
 TEAM_NAMES = [tuple(pair) for pair in config.config["matchmaking"]["team_names"]]
-LEAGUE_LANES = [r for r in config.config["profile"]["games"]["league"]["roles"] if r != "Flex"]
-VAL_ROLES = [r for r in config.config["profile"]["games"]["valorant"]["roles"] if r != "Flex"]
-GAME_CATEGORIES = {
-    "league": LEAGUE_LANES,
-    "valorant": VAL_ROLES,
+ROLE_REQUIREMENTS = {
+    "league": {"Top": 1, "Jungle": 1, "Mid": 1, "Bot": 1, "Support": 1},
+    "valorant": {"Duelist": 1, "Initiator": 1, "Controller": 1, "Sentinel": 1},
+    "overwatch": {"Tank": 1, "Damage": 2, "Support": 2},
 }
 RANK_JITTER = 2 # determines randomness in shuffling
 
@@ -60,7 +59,7 @@ def generate_match_embed(session):
         title=f"{session.game.title()} Lobby — Teams",
         color=discord.Color.from_rgb(78, 42, 132),
     )
-    lane_order = {lane: i for i, lane in enumerate(GAME_CATEGORIES[session.game])}
+    lane_order = {lane: i for i, lane in enumerate(ROLE_REQUIREMENTS[session.game])}
     def team_rows(team):
         ordered = sorted(
             team,
@@ -104,9 +103,16 @@ async def get_game_shuffle_data(joined, game):
     return rank_by_id, roles_by_id
 
 def balance_teams(game, joined, rank_by_id, roles_by_id):
-    categories = GAME_CATEGORIES[game].copy()
-    random.shuffle(categories)
-    categories = categories[: len(joined) // 2]
+    requirements = list(ROLE_REQUIREMENTS[game].items())
+    random.shuffle(requirements)
+
+    slots_per_team= len(joined) // 2
+    selected = []
+    used = 0
+    for role, count in requirements:
+        if used + count <= slots_per_team:
+            selected.append((role, count))
+            used += count
 
     effective_rank = {
         m.id: rank_by_id[m.id] + random.uniform(-RANK_JITTER, RANK_JITTER)
@@ -118,42 +124,39 @@ def balance_teams(game, joined, rank_by_id, roles_by_id):
     team_a_total, team_b_total = 0, 0
     assignments = {}
 
-    for category in categories:
-        category_pool = [m for m in remaining if category in roles_by_id[m.id]]
-        category_pool_ids = {m.id for m in category_pool}
-        flex_pool = [m for m in remaining if "Flex" in roles_by_id[m.id] and m.id not in category_pool_ids]
+    for role, count in selected:
+        needed_total = count * 2
+        role_pool = [m for m in remaining if role in roles_by_id[m.id]]
+        role_pool_ids = {m.id for m in role_pool}
+        flex_pool = [m for m in remaining if "Flex" in roles_by_id[m.id] and m.id not in role_pool_ids]
 
-        candidates = category_pool
-        if len(candidates) < 2:
+        candidates = role_pool
+        if len(candidates) < needed_total:
             candidate_ids = {m.id for m in candidates}
-            needed = 2 - len(candidates)
+            needed = needed_total - len(candidates)
             candidates += [m for m in flex_pool if m.id not in candidate_ids][:needed]
-        if len(candidates) < 2:
+        if len(candidates) < needed_total:
             candidate_ids = {m.id for m in candidates}
-            needed = 2 - len(candidates)
+            needed = needed_total - len(candidates)
             candidates += [m for m in remaining if m.id not in candidate_ids][:needed]
 
-        candidates = sorted(candidates, key=lambda m: effective_rank[m.id], reverse=True)[:2]
-        first, second = candidates[0], candidates[1]
+        candidates = sorted(candidates, key=lambda m: effective_rank[m.id], reverse=True)[:needed_total]
+        
+        for m in candidates:
+            if len(team_a) < len(team_b) or (len(team_a) == len(team_b) and team_a_total <= team_b_total):
+                team_a.append(m)
+                team_a_total += effective_rank[m.id]
+            else:
+                team_b.append(m)
+                team_b_total += effective_rank[m.id]
+            assignments[m.id] = role
 
-        if team_a_total <= team_b_total:
-            team_a.append(first)
-            team_b.append(second)
-            team_a_total += effective_rank[first.id]
-            team_b_total += effective_rank[second.id]
-        else:
-            team_b.append(first)
-            team_a.append(second)
-            team_b_total += effective_rank[first.id]
-            team_a_total += effective_rank[second.id]
-
-        assignments[first.id] = category
-        assignments[second.id] = category
-        remaining = [m for m in remaining if m.id not in (first.id, second.id)]
+        chosen_ids = {m.id for m in candidates}
+        remaining = [m for m in remaining if m.id not in chosen_ids]
 
     remaining_sorted = sorted(remaining, key=lambda m: effective_rank[m.id], reverse=True)
     for m in remaining_sorted:
-        if team_a_total <= team_b_total:
+        if len(team_a) < len(team_b) or (len(team_a) == len(team_b) and team_a_total <= team_b_total):
             team_a.append(m)
             team_a_total += effective_rank[m.id]
 

@@ -297,6 +297,8 @@ class Matchmaking(commands.Cog):
         if session.owner is None:
             session.owner = ctx.author 
 
+        await message.edit(embed=embed, view=view)
+
 class LobbyView(discord.ui.View):
     def __init__(self, session):
         super().__init__(timeout=None)

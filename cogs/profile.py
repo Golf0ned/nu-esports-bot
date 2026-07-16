@@ -381,6 +381,7 @@ class Profile(commands.Cog):
 
         embed = discord.Embed(
             title="Primary updated",
+            description=f"New primary: {primary}",
             color=discord.Color.from_rgb(78, 42, 132)
         )
 

@@ -1,6 +1,8 @@
+import asyncio
+
 import discord
 
-from utils import config, db
+from utils import config, db, migrate
 
 
 TOKEN = config.secrets["discord"]["token"]
@@ -14,6 +16,10 @@ async def on_ready():
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
 
 
+# Bring the schema up to date before any cog loads, so nothing can query a table
+# that doesn't exist yet.
+asyncio.run(migrate.run_migrations())
+
 cogs_list = [
     "fun",
     "gameroom",
@@ -25,7 +31,7 @@ cogs_list = [
     "connections",
     "pugs",
     "moderation",
-    "presence"
+    "presence",
 ]
 
 for cog in cogs_list:

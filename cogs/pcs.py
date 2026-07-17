@@ -93,13 +93,37 @@ class PCs(commands.Cog):
             # External events have unlimited prime time quota since they're staff-managed
             "External": 99,
         }
-        # Staff ping index for cycling through gameroom staff
-        self.staff_ping_index = 0
+        # Staff ping index for cycling through gameroom staff. None until the first
+        # ping loads it from the db -- see next_staff_index().
+        self.staff_ping_index = None
         # Track reservation messages pending acknowledgment
         # Format: {message_id: {"staff_id": int, "channel_id": int, "sent_at": datetime, "team": str}}
         self.pending_acknowledgments = {}
         # Start background task
         self.check_pending_acknowledgments.start()
+
+    async def next_staff_index(self):
+        """Return the staff member whose turn it is, and advance the rotation.
+
+        The index is persisted so the rotation survives a restart -- it used to reset
+        on every deploy, which meant the same person got pinged over and over.
+
+        Loaded lazily rather than on cog load: the db pool isn't open until on_ready,
+        and py-cord has no cog_load hook to hang this off of.
+        """
+        if self.staff_ping_index is None:
+            row = await db.fetch_one(
+                "SELECT value FROM bot_state WHERE key = 'staff_ping_index'"
+            )
+            self.staff_ping_index = int(row[0]) if row else 0
+
+        current = self.staff_ping_index % len(STAFF_LIST)
+        self.staff_ping_index = (current + 1) % len(STAFF_LIST)
+        await db.perform_one(
+            "UPDATE bot_state SET value = %s WHERE key = 'staff_ping_index'",
+            (str(self.staff_ping_index),),
+        )
+        return current
 
     @commands.Cog.listener()
     async def on_reaction_add(self, reaction, user):
@@ -309,9 +333,8 @@ class PCs(commands.Cog):
 
             # Ping the next staff member in rotation
             if STAFF_LIST:
-                staff_id = STAFF_LIST[self.staff_ping_index % len(STAFF_LIST)]
+                staff_id = STAFF_LIST[await self.next_staff_index()]
                 await reservations_channel.send(f"<@{staff_id}>", embed=embed)
-                self.staff_ping_index = (self.staff_ping_index + 1) % len(STAFF_LIST)
             else:
                 await reservations_channel.send(embed=embed)
         except Exception as e:
@@ -1023,7 +1046,7 @@ class PCs(commands.Cog):
     )
     @commands.dynamic_cooldown(pcs_cooldown, commands.BucketType.user)
     async def pcs(self, ctx):
-        in_bot_channel = (ctx.channel.id == BOT_CHANNEL_ID) 
+        in_bot_channel = ctx.channel.id == BOT_CHANNEL_ID
         await ctx.defer(ephemeral=(not in_bot_channel))
         now = datetime.now(CENTRAL_TZ)
         hours = self.get_gameroom_hours_for_date(now.date())
@@ -1094,13 +1117,17 @@ class PCs(commands.Cog):
             color=discord.Color.from_rgb(78, 42, 132),
         )
         embed.add_field(name="Legend", value=legend or "No data", inline=False)
-        embed.description = "⭐ We made a website! [the nexus nexus](https://thenexusnexus.vercel.app/)"
+        embed.description = (
+            "⭐ We made a website! [the nexus nexus](https://thenexusnexus.vercel.app/)"
+        )
         embed.set_footer(text="Kickable = >2hrs and not reserved")
         try:
             grid_image = self.build_pcs_grid_image(entries)
             file = discord.File(grid_image, filename="pcs.png")
             embed.set_image(url="attachment://pcs.png")
-            await ctx.followup.send(embed=embed, file=file, ephemeral=(not in_bot_channel))
+            await ctx.followup.send(
+                embed=embed, file=file, ephemeral=(not in_bot_channel)
+            )
         except Exception as e:
             print(f"Failed to render /pcs image, falling back to text: {e}")
             grid, _ = self.build_grid(data, reservations)
@@ -1681,7 +1708,7 @@ class PCs(commands.Cog):
         # Colors (Discord dark theme friendly)
         bg_color = (47, 49, 54)  # Discord dark background
         text_color = (220, 221, 222)  # Light gray text
-        #grid_color = (60, 63, 68)  # Slightly lighter for grid lines
+        # grid_color = (60, 63, 68)  # Slightly lighter for grid lines
         available_color = (87, 242, 135)  # Green
         reserved_color = (155, 89, 182)  # Purple
         pending_color = (255, 165, 0)  # Orange
@@ -1739,9 +1766,9 @@ class PCs(commands.Cog):
 
                 # Draw filled rectangle
                 draw.rectangle(
-                    [x, y+2, x + cell_size - 2 + 1, y + cell_size - 2],
+                    [x, y + 2, x + cell_size - 2 + 1, y + cell_size - 2],
                     fill=color,
-                #   outline=grid_color,
+                    #   outline=grid_color,
                 )
 
         # Save to BytesIO
@@ -1985,7 +2012,7 @@ class ReservationTimeModal(discord.ui.Modal):
 
                 # Ping the next staff member in rotation
                 if STAFF_LIST:
-                    staff_id = STAFF_LIST[self.cog.staff_ping_index % len(STAFF_LIST)]
+                    staff_id = STAFF_LIST[await self.cog.next_staff_index()]
                     msg = await reservations_channel.send(f"<@{staff_id}>", embed=embed)
                     # Track for acknowledgment
                     self.cog.pending_acknowledgments[msg.id] = {
@@ -1994,9 +2021,6 @@ class ReservationTimeModal(discord.ui.Modal):
                         "sent_at": datetime.now(CENTRAL_TZ),
                         "team": self.team,
                     }
-                    self.cog.staff_ping_index = (self.cog.staff_ping_index + 1) % len(
-                        STAFF_LIST
-                    )
                 else:
                     await reservations_channel.send(embed=embed)
         except Exception as e:

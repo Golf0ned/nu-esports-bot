@@ -1,5 +1,3 @@
-import asyncio
-
 import discord
 
 from utils import config, db, migrate
@@ -17,8 +15,10 @@ async def on_ready():
 
 
 # Bring the schema up to date before any cog loads, so nothing can query a table
-# that doesn't exist yet.
-asyncio.run(migrate.run_migrations())
+# that doesn't exist yet. This has to run on the bot's own loop: asyncio.run() would
+# close the loop it creates and leave the thread with no current loop, which breaks
+# every cog that calls get_event_loop() to start a task at import time.
+bot.loop.run_until_complete(migrate.run_migrations())
 
 cogs_list = [
     "fun",

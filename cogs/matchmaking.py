@@ -451,10 +451,9 @@ class SwapSelectView(discord.ui.View):
     async def back(self, interaction: discord.Interaction):
         """Return to the admin panel without swapping anyone."""
         if not has_privilege(self.session, interaction):
-            if not has_privilege(self.session, interaction):
-                await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
-                return
-            await interaction.response.edit_message(embed=generate_embed(self.session), view=AdminView(self.session))
+            await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
+            return
+        await interaction.response.edit_message(embed=generate_embed(self.session), view=AdminView(self.session))
 
 class WinnerSelectView(discord.ui.View):
     """Ephemeral team picker for declaring a winner.

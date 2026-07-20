@@ -416,6 +416,7 @@ class Profile(commands.Cog):
 
         if not mains:
             await ctx.followup.send("You haven't set any mains for this game yet! Use `/profile set main` first.", ephemeral = True)
+            return
 
         if primary not in mains:
             await ctx.followup.send(f"{primary} not in your list of mains, {', '.join(mains)}.", ephemeral = True)

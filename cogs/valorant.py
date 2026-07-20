@@ -77,7 +77,7 @@ def random_map(flags):
 
 
 def random_team(flags):
-    agents = config.game_data["valorant"]["agents"]
+    agents = config.game_data["valorant"]["characters"]
     agents_roles = copy.deepcopy(
         config.game_data["valorant"]["agents_roles"]
     )  # copy because pop

@@ -7,7 +7,7 @@ from utils import db
 
 
 GUILD_ID = config.secrets["discord"]["guild_id"]
-GAME_CHOICES = list(config.config.get("profile", {}).get("games", {}).keys())
+GAME_CHOICES = list(config.game_data.keys())
 DEFAULT_TAG = {"Lobby": "🖱️", "Winner": "🏆"}
 TEAM_NAMES = [tuple(pair) for pair in config.matchmaking_data["team_names"]]
 ROLE_REQUIREMENTS = {game: data["role_requirements"] for game, data in config.game_data.items()}

@@ -9,7 +9,7 @@ TYPE_MAP = {
 }
 
 def load_statuses():
-    with open("statuses.yaml", "r") as file:
+    with open("data/statuses.yaml", "r") as file:
         statuses = yaml.safe_load(file)
     return [
         discord.Activity(type=TYPE_MAP[status["type"]], name=status["name"])

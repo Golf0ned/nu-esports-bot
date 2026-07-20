@@ -17,13 +17,7 @@ fun:
 gameroom:
   staff:
   - #<user_id>
-
-matchmaking:
-  team_names:
-    # - [Team name Left, Team name Right]
-    # - [Team name Left, Team name Right]
-    # - ...
-
+  
 reservations:
   # where the outputs of reservations gets sent to (ie gameroom staff channel)
   channel: #<channel_id>

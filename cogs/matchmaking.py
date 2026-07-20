@@ -1,3 +1,4 @@
+from __future__ import annotations
 import discord
 import random
 from discord.ext import commands
@@ -10,11 +11,16 @@ GUILD_ID = config.secrets["discord"]["guild_id"]
 GAME_CHOICES = list(config.game_data.keys())
 DEFAULT_TAG = {"Lobby": "🖱️", "Winner": "🏆"}
 TEAM_NAMES = [tuple(pair) for pair in config.matchmaking_data["team_names"]]
-ROLE_REQUIREMENTS = {game: data["role_requirements"] for game, data in config.game_data.items()}
+ROLE_REQUIREMENTS = {game: data.get("role_requirements", {}) for game, data in config.game_data.items()}
 RANK_JITTER = 2 # determines randomness in shuffling
 
 
-def generate_embed(session):
+def generate_embed(session: MatchmakingSession) -> discord.Embed:
+    """Builds the embed for a lobby.
+    
+    Shows the waiting-room roster (two columns of joined players) if no shuffle has happened yet, 
+    or the shuffled team layout if it has
+    """
     if session.role_assignments:
         return generate_match_embed(session)
     embed = discord.Embed(
@@ -36,7 +42,12 @@ def generate_embed(session):
     embed.add_field(name=f"{session.team_names[1]}", value="\n".join(right_rows), inline=True)
     return embed
 
-def generate_postgame_embed(session, team, players):
+def generate_postgame_embed(session: MatchmakingSession, team: str, players: list[discord.Member]) -> discord.Embed:
+    """Build the "X team wins" embed after a winner is declared.
+
+    team: the winning team's display name (not team_a/team_b, the actual name string).
+    players: list of players on the winning team.
+    """
     embed = discord.Embed(
         title = f"{team} Win!",
         color = discord.Color.from_rgb(78,42,132)
@@ -50,7 +61,11 @@ def generate_postgame_embed(session, team, players):
     embed.add_field(name="Players", value="\n".join(rows), inline=True)
     return embed
 
-def generate_match_embed(session):
+def generate_match_embed(session: MatchmakingSession) -> discord.Embed:
+    """Build the embed for a lobby that's already been shuffled into teams.
+    
+    Players are grouped by team and ordered by role (via ROLE_REQUIREMENTS), not join order.
+    """
     embed = discord.Embed(
         title=f"{session.game.title()} Lobby — Teams",
         color=discord.Color.from_rgb(78, 42, 132),
@@ -72,7 +87,16 @@ def generate_match_embed(session):
     return embed
 
 
-async def get_game_shuffle_data(joined, game):
+async def get_game_shuffle_data(joined: list[discord.Member], game: str) -> tuple[
+                                                                                dict[int, float], 
+                                                                                dict[int, list[str]]
+                                                                                ]:
+    """Fetch each joined player's rank and roles for a game, filling in defaults for missing data.
+    
+    Players with no rank on file get the average rank of everyone who does (or 0 if nobody is set). Players with no role default to ["Flex"]
+    
+    Returns (rank_by_id, roles_by_id), both keyed by discord member id.
+    """
     ids = [m.id for m in joined]
 
     rank_rows = await db.fetch_all(
@@ -98,7 +122,21 @@ async def get_game_shuffle_data(joined, game):
     
     return rank_by_id, roles_by_id
 
-def balance_teams(game, joined, rank_by_id, roles_by_id):
+def balance_teams(game: str, joined: list[discord.Member], rank_by_id: dict[int, float], roles_by_id: dict[int, list[str]]) -> tuple[
+                                                                                                                                    list[discord.Member],
+                                                                                                                                    list[discord.Member],
+                                                                                                                                    dict[int, str]
+                                                                                                                                    ]:
+    """Split joined players into two balanced teams
+    
+    Process each required role (in random order, so repeated shuffles vary) and greedily assign the needed number of players per team,
+    preferring players who actually have that role, falling back to "Flex", then anyone left. Within roles, players are handed to teams
+    with fewer members (tied broken by lower total rank), which matters because effective_rank can go negative when nobody has a rank set.
+    
+    A small random "jitter" `RANK_JITTER` is added to each player's rank before comparing, so the lobby doesn't shuffle to the same result every time.
+    
+    Returns (team_a, team_b, assignments), where assignments maps member id ->  lane/role.
+    """
     requirements = list(ROLE_REQUIREMENTS[game].items())
     random.shuffle(requirements)
 
@@ -163,12 +201,19 @@ def balance_teams(game, joined, rank_by_id, roles_by_id):
 
     return team_a, team_b, assignments
 
-def has_privilege(session, interaction):
+def has_privilege(session: MatchmakingSession, interaction: discord.Interaction) -> bool:
+    """Check wether whoever clicked a button is allowed to use admin controls.
+    
+    True if they have a role with "game head" in its name (case-insensitive, substring match), 
+    or if they're the person who started the lobby."""
     if (any("game head" in role.name.lower() for role in interaction.user.roles) or interaction.user.id == session.owner.id):
         return True
     return False
 
-async def refresh_admin_panels(session):
+async def refresh_admin_panels(session: MatchmakingSession) -> None:
+    """Re-render every currently-open admin panel so they reflect the latest lobby state.
+    
+    Panels that have been dismissed/deleted are dropped instead of retried"""
     still_open = {}
     for user_id, msg in session.admin_panels.items():
         try:
@@ -178,7 +223,14 @@ async def refresh_admin_panels(session):
             pass
     session.admin_panels = still_open
 
-def swap_slots(session, id_a, id_b):
+def swap_slots(session: MatchmakingSession, id_a: int, id_b: int) -> bool:
+    """Swap two players' team+lane slots.
+
+    If they're on different teams, both their team assignment and lane swap.
+    If they're on the same team, only their lanes swap (team stays the same).
+
+    Returns False (and does nothing) if either id isn't currently on team_a/team_b
+    """
     member_a = next((m for m in session.team_a + session.team_b if m.id == id_a), None)
     member_b = next((m for m in session.team_a + session.team_b if m.id == id_b), None)
     if member_a is None or member_b is None:
@@ -206,7 +258,9 @@ def swap_slots(session, id_a, id_b):
 
     return True
 
-async def update_record(session, winners, losers) -> None:
+async def update_record(session: MatchmakingSession, winners: list[discord.Member], losers: list[discord.Member]) -> None:
+    """Record a win for each player in `winners` and a loss for each player in `losers`
+    in profile_stats, for the current session's game."""
 
     sqlWin = '''
             INSERT INTO profile_stats (discordid, game, wins)
@@ -251,15 +305,13 @@ class Matchmaking(commands.Cog):
             description="Game to matchmake for",
             choices=GAME_CHOICES
         ),
-        teamOne: discord.Option(
+        team_a: discord.Option(
             str,
-            name="team_a",
             description="Team A's name",
             default=None
         ),
-        teamTwo: discord.Option(
+        team_b: discord.Option(
             str,
-            name="team_b",
             description="Team B's name",
             default=None
         ),
@@ -281,10 +333,10 @@ class Matchmaking(commands.Cog):
 
         session.key = key
 
-        if teamOne:
-            session.team_names = (teamOne, session.team_names[1])
-        if teamTwo:
-            session.team_names = (session.team_names[0], teamTwo)
+        if team_a:
+            session.team_names = (team_a, session.team_names[1])
+        if team_b:
+            session.team_names = (session.team_names[0], team_b)
 
         view = LobbyView(session)
         embed = generate_embed(session)
@@ -368,6 +420,10 @@ class SwapSelectView(discord.ui.View):
         self.select.callback = self.on_select
         self.add_item(self.select)
 
+        back_button = discord.ui.Button(label="Back", style=discord.ButtonStyle.success)
+        back_button.callback = self.back
+        self.add_item(back_button)
+
     async def on_select(self, interaction):
         id_a, id_b = [int(v) for v in self.select.values]
         swap_slots(self.session, id_a, id_b)
@@ -375,6 +431,13 @@ class SwapSelectView(discord.ui.View):
         await self.session.message.edit(embed=generate_embed(self.session), view=LobbyView(self.session))
         await interaction.response.edit_message(embed=generate_embed(self.session), view=AdminView(self.session))
         await refresh_admin_panels(self.session)
+
+    async def back(self, interaction):
+        if not has_privilege(self.session, interaction):
+            if not has_privilege(self.session, interaction):
+                await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
+                return
+            await interaction.response.edit_message(embed=generate_embed(self.session), view=AdminView(self.session))
 
 class WinnerSelectView(discord.ui.View):
     def __init__(self, session):

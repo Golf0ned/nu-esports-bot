@@ -161,6 +161,7 @@ def build_game_embed(target: discord.Member,
 
 
 class Profile(commands.Cog):
+    """Cog housing the /profile command group:"""
     def __init__(self, bot):
         self.bot = bot
 
@@ -173,13 +174,14 @@ class Profile(commands.Cog):
     )
     async def bio(
         self,
-        ctx,
+        ctx: discord.ApplicationContext,
         bio: discord.Option(
             str,
             name="bio",
             description="About you!"
         )
-    ):
+    ) -> None:
+        """Set (or overwrite) your profile bio."""
         await ctx.defer(ephemeral=True)
 
         sql = """
@@ -205,7 +207,7 @@ class Profile(commands.Cog):
     )
     async def picture(
         self,
-        ctx,
+        ctx: discord.ApplicationContext,
         picture: discord.Option(
             str,
             name="url",
@@ -219,7 +221,10 @@ class Profile(commands.Cog):
             autocomplete=picture_autocomplete,
             default="main"
         )
-    ):
+    ) -> None:
+        """Set (or overwrite) your profile's main image or thumbnail via direct image URL
+        
+        Rejects URLs that don't end in a known image extension before touching the database."""
         await ctx.defer(ephemeral=True)
 
         if picture and (not picture.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"))):
@@ -264,7 +269,7 @@ class Profile(commands.Cog):
     )
     async def rank(
         self, 
-        ctx,
+        ctx: discord.ApplicationContext,
         game: discord.Option(
             str,
             name="game",
@@ -284,7 +289,8 @@ class Profile(commands.Cog):
             autocomplete=division_autocomplete,
             default="1",
         )
-    ):
+    ) -> None:
+        """Set your rank for a game, storing both a numeric value (for balancing) and a string (for display)."""
         await ctx.defer(ephemeral=True)
 
         if tier not in get_tiers(game):
@@ -333,14 +339,15 @@ class Profile(commands.Cog):
     )
     async def role(
         self,
-        ctx,
+        ctx: discord.ApplicationContext,
         game: discord.Option(
             str,
             name="game",
             description="Game to change something about",
             choices=GAME_CHOICES,
         )
-    ):
+    ) -> None:
+        """Open a multi-select menu to set your role(s) for a game."""
         await ctx.defer(ephemeral=True)
 
         rows = await db.fetch_all(
@@ -359,14 +366,15 @@ class Profile(commands.Cog):
     )
     async def main(
         self,
-        ctx,
+        ctx: discord.ApplicationContext,
         game: discord.Option(
             str,
             name="game",
             description="Game to change something about",
             choices=GAME_CHOICES,
         ),
-    ):
+    ) -> None:
+        """Open a modal to set your mans for a game, as a free-text comma-seperated input."""
         rows = await db.fetch_all(
             "SELECT main FROM profile_mains WHERE discordid = %s AND game = %s;",
             (ctx.author.id, game),
@@ -380,7 +388,7 @@ class Profile(commands.Cog):
     )
     async def primary(
         self,
-        ctx,
+        ctx: discord.ApplicationContext,
         game: discord.Option(
             str,
             name="game",
@@ -393,7 +401,11 @@ class Profile(commands.Cog):
             description="Used for the little picture on your profile",
             autocomplete=primary_autocomplete
         )
-    ):
+    ) -> None:
+        """Set which of your own mains is used for the profile thumbnail/splash art.
+        
+        Must already be one of your set mains for that game.
+        """
         await ctx.defer(ephemeral=True)
 
         rows = await db.fetch_all(
@@ -436,14 +448,15 @@ class Profile(commands.Cog):
     )
     async def tag(
         self,
-        ctx,
+        ctx: discord.ApplicationContext,
         tag: discord.Option(
             str,
             name="tag",
             description="Emoji tag to identify yourself by!",
             default=None
         )
-    ):
+    ) -> None:
+        """Set the emoji shown next to your name on your profile and in lobbies, or clear it if ommitted."""
         await ctx.defer(ephemeral=True)
 
         if tag is not None:
@@ -476,7 +489,7 @@ class Profile(commands.Cog):
     )
     async def view(
         self,
-        ctx,
+        ctx: discord.ApplicationContext,
         user: discord.Option(
             discord.Member,
             description="Defaults to you",
@@ -489,7 +502,10 @@ class Profile(commands.Cog):
             choices=GAME_CHOICES,
             default=None
         )
-    ):
+    ) -> None:
+        """Show a paginated profile: A home page plus one page per game with data.
+        
+        Games with no rank/role/mains on file are skipped entirely, unless `game` is explicitly requested, where it opens directly to it."""
         await ctx.defer()
 
         target = user or ctx.author

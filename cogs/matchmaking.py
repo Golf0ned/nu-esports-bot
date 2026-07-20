@@ -1,4 +1,3 @@
-from __future__ import annotations
 import discord
 import random
 from discord.ext import commands
@@ -15,7 +14,7 @@ ROLE_REQUIREMENTS = {game: data.get("role_requirements", {}) for game, data in c
 RANK_JITTER = 2 # determines randomness in shuffling
 
 
-def generate_embed(session: MatchmakingSession) -> discord.Embed:
+def generate_embed(session: "MatchmakingSession") -> discord.Embed:
     """Builds the embed for a lobby.
     
     Shows the waiting-room roster (two columns of joined players) if no shuffle has happened yet, 
@@ -42,7 +41,7 @@ def generate_embed(session: MatchmakingSession) -> discord.Embed:
     embed.add_field(name=f"{session.team_names[1]}", value="\n".join(right_rows), inline=True)
     return embed
 
-def generate_postgame_embed(session: MatchmakingSession, team: str, players: list[discord.Member]) -> discord.Embed:
+def generate_postgame_embed(session: "MatchmakingSession", team: str, players: list[discord.Member]) -> discord.Embed:
     """Build the "X team wins" embed after a winner is declared.
 
     team: the winning team's display name (not team_a/team_b, the actual name string).
@@ -61,7 +60,7 @@ def generate_postgame_embed(session: MatchmakingSession, team: str, players: lis
     embed.add_field(name="Players", value="\n".join(rows), inline=True)
     return embed
 
-def generate_match_embed(session: MatchmakingSession) -> discord.Embed:
+def generate_match_embed(session: "MatchmakingSession") -> discord.Embed:
     """Build the embed for a lobby that's already been shuffled into teams.
     
     Players are grouped by team and ordered by role (via ROLE_REQUIREMENTS), not join order.
@@ -201,7 +200,7 @@ def balance_teams(game: str, joined: list[discord.Member], rank_by_id: dict[int,
 
     return team_a, team_b, assignments
 
-def has_privilege(session: MatchmakingSession, interaction: discord.Interaction) -> bool:
+def has_privilege(session: "MatchmakingSession", interaction: discord.Interaction) -> bool:
     """Check wether whoever clicked a button is allowed to use admin controls.
     
     True if they have a role with "game head" in its name (case-insensitive, substring match), 
@@ -210,7 +209,7 @@ def has_privilege(session: MatchmakingSession, interaction: discord.Interaction)
         return True
     return False
 
-async def refresh_admin_panels(session: MatchmakingSession) -> None:
+async def refresh_admin_panels(session: "MatchmakingSession") -> None:
     """Re-render every currently-open admin panel so they reflect the latest lobby state.
     
     Panels that have been dismissed/deleted are dropped instead of retried"""
@@ -223,7 +222,7 @@ async def refresh_admin_panels(session: MatchmakingSession) -> None:
             pass
     session.admin_panels = still_open
 
-def swap_slots(session: MatchmakingSession, id_a: int, id_b: int) -> bool:
+def swap_slots(session: "MatchmakingSession", id_a: int, id_b: int) -> bool:
     """Swap two players' team+lane slots.
 
     If they're on different teams, both their team assignment and lane swap.
@@ -258,7 +257,7 @@ def swap_slots(session: MatchmakingSession, id_a: int, id_b: int) -> bool:
 
     return True
 
-async def update_record(session: MatchmakingSession, winners: list[discord.Member], losers: list[discord.Member]) -> None:
+async def update_record(session: "MatchmakingSession", winners: list[discord.Member], losers: list[discord.Member]) -> None:
     """Record a win for each player in `winners` and a loss for each player in `losers`
     in profile_stats, for the current session's game."""
 

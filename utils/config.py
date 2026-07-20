@@ -41,7 +41,9 @@ def load_matchmaking_data():
     if not matchmaking_file.exists():
         raise FileNotFoundError("data/matchmaking.yaml not found in local directory")
     with open(matchmaking_file, "r") as f:
-        return yaml.safe_load(f)
+        data = yaml.safe_load(f)
+        data.setdefault("team_names", [])
+        return data
 
 config = load_config()
 secrets = load_secrets()

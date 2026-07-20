@@ -12,33 +12,45 @@ GUILD_ID = config.secrets["discord"]["guild_id"]
 GAME_CHOICES = list(config.game_data.keys())
 CUSTOM_EMOJI_RE = re.compile(r"^<a?:\w+:\d+>$")
 
-def get_tiers(game):
+def get_tiers(game: str) -> list[str]:
+    """Returns the ordered list of rank tiers for a game, lowest to highest."""
     return config.game_data[game]["tiers"]
 
-def get_divisions(game):
+def get_divisions(game: str) -> int:
+    """Return how many divisions each tier has for a game (e.g. 4 for League)."""
     return config.game_data[game]["divisions"]
 
-def get_roles(game):
+def get_roles(game: str) -> list[str]:
+    """Return the selectable roles for a game (includes "Flex")."""
     return config.game_data[game]["roles"]
 
-def get_mains(game):
-     return config.game_data[game]["characters"]
+def get_mains(game: str) -> list[str]:
+    """Return the full character/agent/champion roster for a game."""
+    return config.game_data[game]["characters"]
 
-def tier_has_divisions(game, tier):
+def tier_has_divisions(game: str, tier: str) -> bool:
+    """Return whether a given tier is divided (e.g. "Gold 3") rather than flat (e.g. "Challenger")."""
     return tier not in config.game_data[game]["no_division_tiers"]
 
-def normalize_tag(value):
+def normalize_tag(value: str | None, bot: discord.Bot) -> str | None:
+    """Validate and normalize a user-supplied emoji tag.
+    
+    Accepts a real unicode emoji, an ascii shortcode like ":star", or a custom Disord emoji (<:name:id>). 
+    Returns None if the input isnt exactly one emoji.
+    """
     if not value:
         return None
     value = emoji.emojize(value.strip(), language="alias").replace("\uFE0F", "")
-    if CUSTOM_EMOJI_RE.fullmatch(value):
-        return value
+    match = CUSTOM_EMOJI_RE.fullmatch(value)
+    if match:
+        return value if bot.get_emoji(int(match.group("id"))) is not None else None
     matches = emoji.emoji_list(value)
     if len(matches) == 1 and sum(len(m["emoji"]) for m in matches) == len(value):
         return value
     return None
 
-def compute_rank_value(game, tier, division):
+def compute_rank_value(game: str, tier: str, division: int) -> int:
+    """Convert a tier+division into a single comprable integer."""
     index = get_tiers(game).index(tier)
     divisions = get_divisions(game)
     if tier_has_divisions(game, tier):
@@ -46,33 +58,42 @@ def compute_rank_value(game, tier, division):
     else:
         return index * divisions
     
-def format_rank_label(game, tier, division):
+def format_rank_label(game: str, tier: str, division: int) -> str:
+    """Format a tier+division as a human-readable string, e.g. "Gold 3" or "Challenger"."""
     return f"{tier} {division}" if tier_has_divisions(game, tier) else tier
 
 
-async def tier_autocomplete(ctx: discord.AutocompleteContext):
+async def tier_autocomplete(ctx: discord.AutocompleteContext) -> list[discord.OptionChoice]:
+    """Suggest valid tiers one the user has picked a game."""
     game = ctx.options.get("game")
     return [discord.OptionChoice(t) for t in get_tiers(game)] if game else []
 
-async def division_autocomplete(ctx: discord.AutocompleteContext):
+async def division_autocomplete(ctx: discord.AutocompleteContext) -> list[str]:
+    """Suggest valid division numbers for the game+tier already picked.
+    
+    Returns ["1"] for tiers that don't have divisions, since the option still needs some value."""
     game, tier = ctx.options.get("game"), ctx.options.get("tier")
     if not game or not tier_has_divisions(game, tier):
         return ["1"]
     divisions_per_tier = get_divisions(game)
     return [str(d) for d in range(1, divisions_per_tier+1)]
 
-async def roles_autocomplete(ctx: discord.AutocompleteContext):
+async def roles_autocomplete(ctx: discord.AutocompleteContext) -> list[discord.OptionChoice]:
+    """Suggest valid roles once the user has picked a game."""
     game = ctx.options.get("game")
     return [discord.OptionChoice(r) for r in get_roles(game)] if game else []
 
-async def mains_autocomplete(ctx: discord.AutocompleteContext):
+async def mains_autocomplete(ctx: discord.AutocompleteContext) -> list[discord.OptionChoice]:
+    """Suggest valid characters/agents/champions once the user has picked a game."""
     game = ctx.options.get("game")
     return [discord.OptionChoice(m) for m in get_mains(game)] if game else []
 
-async def picture_autocomplete(ctx: discord.AutocompleteContext):
+async def picture_autocomplete(ctx: discord.AutocompleteContext) -> list[str]:
+    """Static choices for where a profile picture URL should go."""
     return ["Main", "Thumbnail"]
 
-async def primary_autocomplete(ctx: discord.AutocompleteContext):
+async def primary_autocomplete(ctx: discord.AutocompleteContext) -> list[discord.OptionChoice]:
+    """Suggest the user's own previously-set mains for the picked game, as primary-main candidates."""
     game = ctx.options.get("game")
     if not game:
         return []
@@ -83,7 +104,8 @@ async def primary_autocomplete(ctx: discord.AutocompleteContext):
     return [discord.OptionChoice(r[0]) for r in rows]
     
 
-def build_home_embed(target, profile_row, total_pages, total_wins, total_losses):
+def build_home_embed(target: discord.Member, profile_row: tuple | None, total_pages: int, total_wins: int, total_losses: int) -> discord.Embed:
+    """Build the first page of /profile view: bio, win/loss record, and member-since date."""
     bio = profile_row[0] if profile_row and profile_row[0] else "No bio set."
     picture_url = profile_row[1] if profile_row and profile_row[1] else None
     thumbnail_url = profile_row[2] if profile_row and profile_row[2] else None
@@ -102,7 +124,18 @@ def build_home_embed(target, profile_row, total_pages, total_wins, total_losses)
     embed.set_footer(text=f"Page 1/{total_pages}")
     return embed
 
-def build_game_embed(target, game, row, roles, mains, primary_main, tag, page_number, total_pages):
+def build_game_embed(target: discord.Member, 
+                     game: str, 
+                     row: tuple | None, 
+                     roles: list[str], 
+                     mains: list[str], 
+                     primary_main: str | None, 
+                     tag: str, 
+                     page_number: int, 
+                     total_pages: int) -> discord.Embed:
+    """Build one per-game page of /profile view: rank, roles, mains, wins/losses.
+    
+    Sets a champion splash_art thumbnail if primary_main is set. (League only right now)"""
     rank_label = row[1] if row else "Not set"
     wins = row[2] if row else "N/A"
     losses = row[3] if row else "N/A"
@@ -363,10 +396,17 @@ class Profile(commands.Cog):
     ):
         await ctx.defer(ephemeral=True)
 
-        mains = get_mains(game)
+        rows = await db.fetch_all(
+            "SELECT main FROM profile_mains WHERE discordid = %s AND game = %s;",
+            (ctx.author.id, game),
+        )
+        mains = [r[0] for r in rows]
+
+        if not mains:
+            await ctx.followup.send("You haven't set any mains for this game yet! Use `/profile set main` first.", ephemeral = True)
 
         if primary not in mains:
-            await ctx.followup.send(f"{primary} not in your list of mains, {' ,'.join(mains[:-1])} and {mains[-1]}.")
+            await ctx.followup.send(f"{primary} not in your list of mains, {', '.join(mains)}.", ephemeral = True)
             return
 
         sql = """
@@ -407,7 +447,7 @@ class Profile(commands.Cog):
         await ctx.defer(ephemeral=True)
 
         if tag is not None:
-            normalized = normalize_tag(tag)
+            normalized = normalize_tag(tag, ctx.bot)
             if normalized is None:
                 await ctx.followup.send("That's not a valid emoji :<", ephemeral=True)
                 return
@@ -515,6 +555,7 @@ class Profile(commands.Cog):
         await message.edit(embed=pages[start_index], view=paginator)
 
 class ProfilePaginator(discord.ui.View):
+    """Left/right paginator over a list of embeds, restricted to whoever ran the command."""
     def __init__(self, requester_id, pages, start_index=0):
         super().__init__(timeout=120)
         self.requester_id = requester_id
@@ -522,7 +563,8 @@ class ProfilePaginator(discord.ui.View):
         self.index = start_index
         self.update_buttons()
 
-    async def interaction_check(self, interaction):
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        """Block anyone but the requester from flipping through someone else's profile"""
         if interaction.user.id != self.requester_id:
             await interaction.response.send_message(
                 "This isnt your profile call to flip through!", ephemeral=True
@@ -531,29 +573,39 @@ class ProfilePaginator(discord.ui.View):
         return True
 
     
-    def update_buttons(self):
+    def update_buttons(self) -> None:
+        """Disable ◀ on the first page and ▶ on the last page."""
         self.back.disabled = (self.index == 0)
         self.forward.disabled = (self.index == len(self.pages)-1)
     
     @discord.ui.button(label="◀", style=discord.ButtonStyle.secondary)
-    async def back(self, button, interaction):
+    async def back(self, button: discord.ui.Button, interaction: discord.Interaction) -> None:
+        """Go to the previous page."""
         self.index -= 1
         self.update_buttons()
         await interaction.response.edit_message(embed=self.pages[self.index], view=self)
 
     @discord.ui.button(label="▶", style=discord.ButtonStyle.secondary)
-    async def forward(self, button, interaction):
+    async def forward(self, button: discord.ui.Button, interaction: discord.Interaction) -> None:
+        """Go to the next page."""
         self.index += 1
         self.update_buttons()
         await interaction.response.edit_message(embed=self.pages[self.index], view=self)
     
-    async def on_timeout(self):
+    async def on_timeout(self) -> None:
+        """Disable both buttons once the view times out, so it doesn't look interactive anymore."""
         for child in self.children:
             child.disabled = True
         await self.message.edit(view=self)
 
 class RoleSelectView(discord.ui.View):
-    def __init__(self, requester_id, game, current_roles):
+    """Multi-select dropdown for a player's roles in one game.
+    
+    min_values=0 lets a player clear all their roles by submitting an empty selection.
+    On submit, this replaces the player's full role list for that game (delete then insert) 
+    rather than diffing against what was there before.
+    """
+    def __init__(self, requester_id: int, game: str, current_roles: list[str]) -> None:
         super().__init__(timeout=120)
         self.requester_id = requester_id
         self.game = game
@@ -571,10 +623,12 @@ class RoleSelectView(discord.ui.View):
         self.select.callback = self.on_select
         self.add_item(self.select)
     
-    async def interaction_check(self, interaction):
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        """Checks if the interactor is the original requester"""
         return interaction.user.id == self.requester_id
     
-    async def on_select(self, interaction):
+    async def on_select(self, interaction: discord.Interaction) -> bool:
+        """Overwrite the player's roles for this game with whatever's currently selected."""
         chosen = self.select.values
 
         await db.perform_one(
@@ -593,7 +647,14 @@ class RoleSelectView(discord.ui.View):
         )
 
 class MainsModal(discord.ui.Modal):
-    def __init__(self, requester_id, game, current_mains):
+    """Free-text modal for setting a player's mains, as a comma-separated list.
+    
+    Each entry is matched case-insensitively against the game's real roster.
+    If any entry doesn't match, the whole submission is rejected. 
+    On success, this replaces the player's full mains list for that game, 
+    same delete-then-insert pattern as RoleSelectView.
+    """
+    def __init__(self, requester_id: int, game: str, current_mains: list[str]) -> None:
         super().__init__(title=f"Set your {game.title()} mains")
         self.requester_id = requester_id
         self.game = game
@@ -607,7 +668,8 @@ class MainsModal(discord.ui.Modal):
             )
         )
 
-    async def callback(self, interaction: discord.Interaction):
+    async def callback(self, interaction: discord.Interaction) -> None:
+        """Parse, validate, and save the submitted mains list."""
         raw = self.children[0].value or ""
         candidates = [c.strip() for c in raw.split(",") if c.strip()]
 
@@ -645,5 +707,5 @@ class MainsModal(discord.ui.Modal):
             ephemeral=True
         )
 
-def setup(bot):
+def setup(bot: discord.Bot):
     bot.add_cog(Profile(bot))

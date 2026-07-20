@@ -277,8 +277,10 @@ async def update_record(session: MatchmakingSession, winners: list[discord.Membe
 
 
 class MatchmakingSession:
+    """Tracks the state of one matchmaking lobby for one (channel, game) pair."""
+
     def __init__(self, game):
-        self.game = game
+        self.game: str = game
         self.joined: list[discord.Member] = []
         self.tags: dict[int, str] = {} #member.id to tag
         self.team_a: list[discord.Member] = []
@@ -288,10 +290,13 @@ class MatchmakingSession:
         self.message: discord.Message | None = None
         self.admin_panels: dict[int, discord.InteractionMessage] = {}
         self.owner: discord.Member | None = None
+        self.key: tuple[int, str] | None = None
 
 class Matchmaking(commands.Cog):
+    """Cog housing the /matchmaking command group and the active lobby state for all channels."""
+
     def __init__(self, bot):
-        self.bot = bot
+        self.bot: discord.Bot = bot
         self.active_sessions: dict[tuple[int, str], MatchmakingSession] = {}
 
     matchmaking_group = discord.SlashCommandGroup("matchmaking", "matchmaking tools")
@@ -299,7 +304,7 @@ class Matchmaking(commands.Cog):
     @matchmaking_group.command(name="start", guild_ids=[GUILD_ID])
     async def start(
         self,
-        ctx,
+        ctx: discord.ApplicationContext,
         game: discord.Option(
             str,
             description="Game to matchmake for",
@@ -315,7 +320,11 @@ class Matchmaking(commands.Cog):
             description="Team B's name",
             default=None
         ),
-    ):
+    ) -> None:
+        """Start a new matchmaking lobby, or bump an existing one in this channel/game.
+        
+        Bumping doesn't reset the lobby, just moves it to the bottom of the channel.
+        """
         await ctx.defer()
 
         key = (ctx.channel.id, game)
@@ -348,13 +357,16 @@ class Matchmaking(commands.Cog):
         await message.edit(embed=embed, view=view)
 
 class LobbyView(discord.ui.View):
+    """Shared, persistent view on the public lobby message: Join / Leave / Settings."""
+
     def __init__(self, session):
         super().__init__(timeout=None)
         self.session = session
         self.join.disabled = len(session.joined) >= 10
 
     @discord.ui.button(label="Join", style=discord.ButtonStyle.success)
-    async def join(self, button, interaction):
+    async def join(self, button: discord.ui.Button, interaction: discord.Interaction) -> None:
+        """Add whoever clicked to the lobby, unless they've already joined or it's full."""
         if any(m.id == interaction.user.id for m in self.session.joined):
             await interaction.response.send_message("You've already joined!", ephemeral=True)
             return
@@ -374,7 +386,8 @@ class LobbyView(discord.ui.View):
 
 
     @discord.ui.button(label="Leave", style=discord.ButtonStyle.danger)
-    async def leave(self, button, interaction):
+    async def leave(self, button: discord.ui.Button, interaction: discord.Interaction) -> None:
+        """Remove whoever clicked from the lobby, if they were in it."""
         if not any(m.id == interaction.user.id for m in self.session.joined):
             await interaction.response.send_message("You haven't joined this lobby!", ephemeral=True)
             return
@@ -388,8 +401,10 @@ class LobbyView(discord.ui.View):
         await refresh_admin_panels(self.session)
 
     @discord.ui.button(label="Settings", style=discord.ButtonStyle.primary)
-    async def settings(self, button, interaction):
-
+    async def settings(self, button: discord.ui.Button, interaction: discord.Interaction) -> None:
+        """Open a private admin panel for gameheads/the lobby owner.
+        
+        Deletes the user's previous panels first, so repeated clicks don't make multiple stale ephemeral messages."""
         if not has_privilege(self.session, interaction):
             await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
             return
@@ -424,7 +439,8 @@ class SwapSelectView(discord.ui.View):
         back_button.callback = self.back
         self.add_item(back_button)
 
-    async def on_select(self, interaction):
+    async def on_select(self, interaction: discord.Interaction):
+        """Swap the two selected players' team+lane slots and refresh every open view of this lobby."""
         id_a, id_b = [int(v) for v in self.select.values]
         swap_slots(self.session, id_a, id_b)
 
@@ -432,7 +448,8 @@ class SwapSelectView(discord.ui.View):
         await interaction.response.edit_message(embed=generate_embed(self.session), view=AdminView(self.session))
         await refresh_admin_panels(self.session)
 
-    async def back(self, interaction):
+    async def back(self, interaction: discord.Interaction):
+        """Return to the admin panel without swapping anyone."""
         if not has_privilege(self.session, interaction):
             if not has_privilege(self.session, interaction):
                 await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
@@ -440,6 +457,9 @@ class SwapSelectView(discord.ui.View):
             await interaction.response.edit_message(embed=generate_embed(self.session), view=AdminView(self.session))
 
 class WinnerSelectView(discord.ui.View):
+    """Ephemeral team picker for declaring a winner.
+    
+    Uses manually-constructed buttons so their labels can show the session's actual team names instead of static text."""
     def __init__(self, session):
         super().__init__(timeout=180)
         self.session = session
@@ -456,7 +476,8 @@ class WinnerSelectView(discord.ui.View):
         back_button.callback = self.back
         self.add_item(back_button)
 
-    async def team_a(self, interaction):
+    async def team_a(self, interaction: discord.Interaction) -> None:
+        """Declare team_a the winner: record wins/losses, post the postgame embed, end the session."""
         if not has_privilege(self.session, interaction):
             await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
             return
@@ -473,7 +494,8 @@ class WinnerSelectView(discord.ui.View):
         await interaction.response.defer()
         await interaction.delete_original_response()
     
-    async def team_b(self, interaction):
+    async def team_b(self, interaction: discord.Interaction) -> None:
+        """Declare team_b the winner: record wins/losses, post the postgame embed, end the session."""
         if not has_privilege(self.session, interaction):
             await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
             return
@@ -490,24 +512,28 @@ class WinnerSelectView(discord.ui.View):
         await interaction.response.defer()
         await interaction.delete_original_response()
     
-    async def back(self, interaction):
+    async def back(self, interaction: discord.Interaction) -> None:
+        """Return to the admin panel without declaring a winner."""
         if not has_privilege(self.session, interaction):
             await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
             return
         await interaction.response.edit_message(embed=generate_embed(self.session), view=AdminView(self.session))
 
 class PostgameView(discord.ui.View):
+    """Post-game view that allows for rematching."""
     def __init__(self, session):
         super().__init__(timeout=180)
         self.session = session
 
 class AdminView(discord.ui.View):
+    """Ephemeral admin panel: Shuffle / Swap / Winner. Gated to gameheads and the lobby owner."""
     def __init__(self, session):
         super().__init__(timeout=180)
         self.session = session
 
     @discord.ui.button(label="Shuffle", style=discord.ButtonStyle.primary)
-    async def shuffle(self, button, interaction):
+    async def shuffle(self, button: discord.ui.Button, interaction: discord.Interaction) -> None:
+        """Fetch each player's rank/role data and re-balance the lobby into two teams."""
         if (len(self.session.joined) % 2) != 0:
             await interaction.response.send_message("You need an even amount of players to shuffle!", ephemeral=True)
             return
@@ -527,7 +553,8 @@ class AdminView(discord.ui.View):
         await refresh_admin_panels(self.session)
 
     @discord.ui.button(label="Swap", style=discord.ButtonStyle.secondary)
-    async def swap(self, button, interaction):
+    async def swap(self, button: discord.ui.Button, interaction: discord.Interaction) -> None:
+        """Open the two-player swap select menu. Requires a shuffle to have happened first."""
         if not has_privilege(self.session, interaction):
             await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
             return
@@ -538,7 +565,8 @@ class AdminView(discord.ui.View):
         await interaction.response.edit_message(embed=generate_embed(self.session), view=SwapSelectView(self.session))
     
     @discord.ui.button(label="Winner", style=discord.ButtonStyle.success)
-    async def winner(self, button, interaction):
+    async def winner(self, button: discord.ui.Button, interaction: discord.Interaction) -> None:
+        """Open the team picker to declare a winner. Requires a shuffle to have happened first."""
         if not has_privilege(self.session, interaction):
             await interaction.response.send_message("Youre not a game head! Feel free to apply though...", ephemeral=True)
             return
@@ -548,5 +576,5 @@ class AdminView(discord.ui.View):
         
         await interaction.response.edit_message(embed=generate_embed(self.session), view=WinnerSelectView(self.session))
 
-def setup(bot):
+def setup(bot: discord.Bot) -> None:
     bot.add_cog(Matchmaking(bot))

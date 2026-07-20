@@ -33,7 +33,6 @@ services:
     networks:
       - internal
     volumes:
-      - ./postgres/init-tables.sql:/docker-entrypoint-initdb.d/init-tables.sql
       - pgdata:/var/lib/postgresql
 
 volumes:

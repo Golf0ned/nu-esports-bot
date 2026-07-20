@@ -99,6 +99,39 @@ Additionally, you will also need a Postgres database to connect to. There are mu
 
 After you have Postgres up and running, modify `secrets.yaml` (and/or `compose.yaml`) to point to it -- the defaults are set up for Docker Compose.
 
+## Database
+
+The schema lives in `postgres/migrations` as numbered `.sql` files. The bot applies any it
+hasn't seen yet on startup, tracking them in a `schema_migrations` table, so a deploy brings
+the database up to date on its own. Existing data is never dropped or recreated.
+
+### Changing the schema
+
+Add a new numbered file and deploy:
+
+```sql
+-- postgres/migrations/003_whatever.sql
+ALTER TABLE users ADD COLUMN IF NOT EXISTS nickname TEXT;
+```
+
+Two rules:
+
+- **Never edit a migration that has already run.** The runner only tracks filenames, so an edit
+  to an applied file silently never reaches production. Add a new file instead.
+- **Write migrations to be additive.** Prefer `ADD COLUMN IF NOT EXISTS` over anything that drops
+  or rewrites data. A migration that fails aborts startup rather than let the bot run against a
+  half-applied schema, so a bad one means downtime until it's fixed.
+
+To apply them by hand instead of via a deploy:
+
+```bash
+uv run -m utils.migrate
+```
+
+### Backups
+
+Talk to Aiden about this.
+
 ## Contributing
 
 Check out [CONTRIBUTING.md](CONTRIBUTING.md) for more information on how to contribute to the bot. 

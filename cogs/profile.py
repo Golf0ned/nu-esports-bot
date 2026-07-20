@@ -10,7 +10,7 @@ from utils import db
 
 GUILD_ID = config.secrets["discord"]["guild_id"]
 GAME_CHOICES = list(config.game_data.keys())
-CUSTOM_EMOJI_RE = re.compile(r"^<a?:\w+:\d+>$")
+CUSTOM_EMOJI_RE = re.compile(r"^<a?:\w+:(?P<id>\d+)>$")
 
 def get_tiers(game: str) -> list[str]:
     """Returns the ordered list of rank tiers for a game, lowest to highest."""

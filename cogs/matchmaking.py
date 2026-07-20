@@ -9,12 +9,8 @@ from utils import db
 GUILD_ID = config.secrets["discord"]["guild_id"]
 GAME_CHOICES = list(config.config.get("profile", {}).get("games", {}).keys())
 DEFAULT_TAG = {"Lobby": "🖱️", "Winner": "🏆"}
-TEAM_NAMES = [tuple(pair) for pair in config.config["matchmaking"]["team_names"]]
-ROLE_REQUIREMENTS = {
-    "league": {"Top": 1, "Jungle": 1, "Mid": 1, "Bot": 1, "Support": 1},
-    "valorant": {"Duelist": 1, "Initiator": 1, "Controller": 1, "Sentinel": 1},
-    "overwatch": {"Tank": 1, "Damage": 2, "Support": 2},
-}
+TEAM_NAMES = [tuple(pair) for pair in config.matchmaking_data["team_names"]]
+ROLE_REQUIREMENTS = {game: data["role_requirements"] for game, data in config.game_data.items()}
 RANK_JITTER = 2 # determines randomness in shuffling
 
 

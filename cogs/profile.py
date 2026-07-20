@@ -9,23 +9,23 @@ from utils import db
 
 
 GUILD_ID = config.secrets["discord"]["guild_id"]
-GAME_CHOICES = list(config.config.get("profile", {}).get("games", {}).keys())
+GAME_CHOICES = list(config.game_data.keys())
 CUSTOM_EMOJI_RE = re.compile(r"^<a?:\w+:\d+>$")
 
 def get_tiers(game):
-    return config.config["profile"]["games"][game]["tiers"]
+    return config.game_data[game]["tiers"]
 
 def get_divisions(game):
-    return config.config["profile"]["games"][game]["divisions"]
+    return config.game_data[game]["divisions"]
 
 def get_roles(game):
-    return config.config["profile"]["games"][game]["roles"]
+    return config.game_data[game]["roles"]
 
 def get_mains(game):
-     return config.config[game]["agents"]
+     return config.game_data[game]["characters"]
 
 def tier_has_divisions(game, tier):
-    return tier not in config.config["profile"]["games"][game]["no_division_tiers"]
+    return tier not in config.game_data[game]["no_division_tiers"]
 
 def normalize_tag(value):
     if not value:

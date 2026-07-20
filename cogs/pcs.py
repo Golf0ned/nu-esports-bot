@@ -152,12 +152,12 @@ class PCs(commands.Cog):
         self, target_date: date
     ) -> Tuple[datetime, datetime] | None:
         """Return open/close datetimes in Central, or None if closed."""
-        adjusted_hours = config.config["gameroom"].get("adjusted_hours", {})
+        adjusted_hours = config.gameroom_data.get("adjusted_hours", {})
         hours = adjusted_hours.get(target_date)
         if hours is None:
             hours = adjusted_hours.get(target_date.strftime("%Y-%m-%d"))
         if hours is None:
-            hours = config.config["gameroom"]["default_hours"][target_date.weekday()]
+            hours = config.gameroom_data["default_hours"][target_date.weekday()]
 
         if not isinstance(hours, str):
             return None
@@ -412,7 +412,7 @@ class PCs(commands.Cog):
         """ "Check that reservation is within Gameroom hours (ignoring adjusted hours for now)"""
         # Get day of week and pull correct hours
         day_of_week = start_time.weekday()
-        hours = config.config["gameroom"]["default_hours"][day_of_week]
+        hours = config.gameroom_data["default_hours"][day_of_week]
 
         # Convert to proper format to use parse_time_range
         hours_str = start_time.strftime("%Y-%m-%d") + " " + hours.replace(" ", "")

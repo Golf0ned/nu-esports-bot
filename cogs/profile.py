@@ -162,7 +162,7 @@ def build_game_embed(target: discord.Member,
 
 def is_game_head(member: discord.Member) -> bool:
     """Check if a member has a role with "game head" in its name (case-insensitive, substring match)"""
-    return any("game head" in role.names.lower() for role in member.roles)
+    return any("game head" in role.name.lower() for role in member.roles)
 
 class Profile(commands.Cog):
     """Cog housing the /profile command group:"""
@@ -576,6 +576,48 @@ class Profile(commands.Cog):
         message = await ctx.followup.send(embed=pages[start_index], view=paginator)
         paginator.message = message
         await message.edit(embed=pages[start_index], view=paginator)
+    
+    @profile.command(
+        name = "elo",
+        guild_ids = [GUILD_ID]
+    )
+    async def elo_view(
+        self,
+        ctx: discord.ApplicationContext,
+        user: discord.Option(
+            discord.Member,
+            description="Player to check elo for",
+            default=None
+        )
+    ) -> None:
+        """Show a player's elo for every game they've played. Game heads only."""
+        await ctx.defer(ephemeral=True)
+
+        if not is_game_head(ctx.author):
+            await ctx.followup.send("You're not a game head! Feel free to apply though...", ephemeral=True)
+            return
+        
+        target = user or ctx.author
+
+        rows = await db.fetch_all(
+            "SELECT game, elo, games_played FROM profile_elo WHERE discordid = %s;",
+            (target.id,)
+        )
+
+        embed = discord.Embed(
+            title=f"{target.display_name}'s Elo",
+            color=discord.Color.from_rgb(78, 42, 132),
+        )
+        if not rows:
+            embed.description = "No elo on record for any game yet."
+        else:
+            elo_by_game = {game: (value, games_played) for game, value, games_played in rows}
+            for game in GAME_CHOICES:
+                if game in elo_by_game:
+                    value, games_played = elo_by_game[game]
+                    embed.add_field(name=game.title(), value=f"{value:.0f} elo ({games_played} games)", inline=True)
+        
+        await ctx.followup.send(embed=embed, ephemeral=True)
 
 class ProfilePaginator(discord.ui.View):
     """Left/right paginator over a list of embeds, restricted to whoever ran the command."""

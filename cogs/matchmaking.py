@@ -60,6 +60,14 @@ def generate_postgame_embed(session: "MatchmakingSession", team: str, players: l
     embed.add_field(name="Players", value="\n".join(rows), inline=True)
     return embed
 
+def generate_cancelled_embed(session: "MatchmakingSession") -> discord.Embed:
+    """Build the "lobby cancelled" embed shown after an admin cancels a game."""
+    return discord.Embed(
+        title=f"{session.game.title()} Lobby — Cancelled",
+        description="This lobby was cancelled by a game head.",
+        color=discord.Color.from_rgb(78, 42, 132),
+    )
+
 def generate_match_embed(session: "MatchmakingSession") -> discord.Embed:
     """Build the embed for a lobby that's already been shuffled into teams.
     
@@ -573,6 +581,53 @@ class AdminView(discord.ui.View):
             return
         
         await interaction.response.edit_message(embed=generate_embed(self.session), view=WinnerSelectView(self.session))
+
+    @discord.ui.button(label="Delete", style=discord.ButtonStyle.danger)
+    async def delete(self, button: discord.ui.Button, interaction: discord.Interaction) -> None:
+        """Cancel a game."""
+        if not has_privilege(self.session, interaction):
+            await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
+            return
+        
+        await interaction.response.edit_message(embed=generate_embed(self.session), view=CancelConfirmView(self.session))
+
+class CancelConfirmView(discord.ui.View):
+    """Ephemeral confirmation step before actually cancelling a lobby.
+
+    Uses a dropdown rather than buttons, so a misclick doesn't instantly end the game.
+    """
+    def __init__(self, session):
+        super().__init__(timeout=180)
+        self.session = session
+
+        options = [
+            discord.SelectOption(label="Yes, cancel this game", value="confirm", emoji="🗑️"),
+            discord.SelectOption(label="No, go back", value="back", emoji="↩️"),
+        ]
+        self.select = discord.ui.Select(placeholder="Are you sure you want to cancel this game?", options=options)
+        self.select.callback = self.on_select
+        self.add_item(self.select)
+
+    async def on_select(self, interaction: discord.Interaction) -> None:
+        """Cancel the lobby if confirmed, otherwise return to the admin panel."""
+        if not has_privilege(self.session, interaction):
+            await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
+            return
+
+        if self.select.values[0] == "back":
+            await interaction.response.edit_message(embed=generate_embed(self.session), view=AdminView(self.session))
+            return
+
+        try:
+            await self.session.message.edit(embed=generate_cancelled_embed(self.session), view=None)
+        except (discord.NotFound, discord.HTTPException):
+            pass
+
+        cog = interaction.client.get_cog("Matchmaking")
+        cog.active_sessions.pop(self.session.key, None)
+
+        await interaction.response.defer()
+        await interaction.delete_original_response()
 
 def setup(bot: discord.Bot) -> None:
     bot.add_cog(Matchmaking(bot))

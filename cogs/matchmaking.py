@@ -12,7 +12,8 @@ GAME_CHOICES = list(config.game_data.keys())
 DEFAULT_TAG = {"Lobby": "🖱️", "Winner": "🏆"}
 TEAM_NAMES = [tuple(pair) for pair in config.matchmaking_data["team_names"]]
 ROLE_REQUIREMENTS = {game: data.get("role_requirements", {}) for game, data in config.game_data.items()}
-RANK_JITTER = 2 # determines randomness in shuffling
+RANK_JITTER = 200        # half-width of the jitter range for a player exactly at the lobby average
+JITTER_PULL_SCALE = 1500 # elo deviation from average that fully saturates the pull toward one side
 
 
 def generate_embed(session: "MatchmakingSession") -> discord.Embed:
@@ -105,14 +106,9 @@ async def get_game_shuffle_data(joined: list[discord.Member], game: str) -> tupl
     
     Returns (rank_by_id, roles_by_id), both keyed by discord member id.
     """
+    elo_by_id = await get_team_elos(game, joined)
+
     ids = [m.id for m in joined]
-
-    rank_rows = await db.fetch_all(
-        "SELECT discordid, rank_value FROM profile_stats WHERE discordid = ANY(%s) AND game = %s;",
-        (ids, game),
-    )
-    rank_by_id = {discordid: rank_value for discordid, rank_value in rank_rows if rank_value is not None}
-
     role_rows = await db.fetch_all(
         "SELECT discordid, role FROM profile_roles WHERE discordid = ANY(%s) AND game = %s;",
         (ids, game),
@@ -121,20 +117,20 @@ async def get_game_shuffle_data(joined: list[discord.Member], game: str) -> tupl
     for discordid, role in role_rows:
         roles_by_id.setdefault(discordid, []).append(role)
 
-    known_ranks = list(rank_by_id.values())
-    average_rank = sum(known_ranks) / len(known_ranks) if known_ranks else 0
-
     for member in joined:
-        rank_by_id.setdefault(member.id, average_rank)
         roles_by_id.setdefault(member.id, ["Flex"])
-    
-    return rank_by_id, roles_by_id
 
-def balance_teams(game: str, joined: list[discord.Member], rank_by_id: dict[int, float], roles_by_id: dict[int, list[str]]) -> tuple[
-                                                                                                                                    list[discord.Member],
-                                                                                                                                    list[discord.Member],
-                                                                                                                                    dict[int, str]
-                                                                                                                                    ]:
+    return elo_by_id, roles_by_id
+
+def balance_teams(game: str, 
+                  joined: list[discord.Member], 
+                  elo_by_id: dict[int, float], 
+                  roles_by_id: dict[int, list[str]]
+                  ) -> tuple[
+                            list[discord.Member],
+                            list[discord.Member],
+                            dict[int, str]
+                            ]:
     """Split joined players into two balanced teams
     
     Process each required role (in random order, so repeated shuffles vary) and greedily assign the needed number of players per team,
@@ -156,8 +152,9 @@ def balance_teams(game: str, joined: list[discord.Member], rank_by_id: dict[int,
             selected.append((role, count))
             used += count
 
-    effective_rank = {
-        m.id: rank_by_id[m.id] + random.uniform(-RANK_JITTER, RANK_JITTER)
+    avg_elo = sum(elo_by_id[m.id] for m in joined) / len(joined)
+    effective_elo = {
+        m.id: jittered_elo(elo_by_id[m.id], avg_elo)
         for m in joined
     }
 
@@ -182,29 +179,29 @@ def balance_teams(game: str, joined: list[discord.Member], rank_by_id: dict[int,
             needed = needed_total - len(candidates)
             candidates += [m for m in remaining if m.id not in candidate_ids][:needed]
 
-        candidates = sorted(candidates, key=lambda m: effective_rank[m.id], reverse=True)[:needed_total]
+        candidates = sorted(candidates, key=lambda m: effective_elo[m.id], reverse=True)[:needed_total]
         
         for m in candidates:
             if len(team_a) < len(team_b) or (len(team_a) == len(team_b) and team_a_total <= team_b_total):
                 team_a.append(m)
-                team_a_total += effective_rank[m.id]
+                team_a_total += effective_elo[m.id]
             else:
                 team_b.append(m)
-                team_b_total += effective_rank[m.id]
+                team_b_total += effective_elo[m.id]
             assignments[m.id] = role
 
         chosen_ids = {m.id for m in candidates}
         remaining = [m for m in remaining if m.id not in chosen_ids]
 
-    remaining_sorted = sorted(remaining, key=lambda m: effective_rank[m.id], reverse=True)
+    remaining_sorted = sorted(remaining, key=lambda m: effective_elo[m.id], reverse=True)
     for m in remaining_sorted:
         if len(team_a) < len(team_b) or (len(team_a) == len(team_b) and team_a_total <= team_b_total):
             team_a.append(m)
-            team_a_total += effective_rank[m.id]
+            team_a_total += effective_elo[m.id]
 
         else:
             team_b.append(m)
-            team_b_total += effective_rank[m.id]
+            team_b_total += effective_elo[m.id]
         assignments[m.id] = roles_by_id[m.id][0]
 
     return team_a, team_b, assignments
@@ -267,6 +264,19 @@ def swap_slots(session: "MatchmakingSession", id_a: int, id_b: int) -> bool:
     session.role_assignments[member_b.id] = lane_a
 
     return True
+
+def jittered_elo(player_elo: float, avg_elo: float, half_width: float = RANK_JITTER, pull_scale: float = JITTER_PULL_SCALE) -> float:
+    """Add a random jitter to a player's elo, biased to pull them toward the lobby average.
+    
+    The jitter's total width stays constant, but its center slides based on how far below/above
+    average the player is: someone well below average gets a jitter that's entirely upside (never
+    randomly pushed even lower), someone well above average gets one that's entirely downside, and
+    someone right at the average gets the old symmetric +/- jitter, unbiased either way.
+    """
+    deviation = avg_elo - player_elo
+    pull = max(-1.0, min(1.0, deviation / pull_scale))
+    center = pull * half_width
+    return player_elo + random.uniform(center - half_width, center + half_width)
 
 async def update_record(session: "MatchmakingSession", winners: list[discord.Member], losers: list[discord.Member]) -> None:
     """Record a win for each player in `winners` and a loss for each player in `losers`
@@ -604,8 +614,8 @@ class AdminView(discord.ui.View):
             await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
             return
         
-        rank_by_id, roles_by_id = await get_game_shuffle_data(self.session.joined, self.session.game)
-        team_a, team_b, assignments = balance_teams(self.session.game, self.session.joined, rank_by_id, roles_by_id)
+        elo_by_id, roles_by_id = await get_game_shuffle_data(self.session.joined, self.session.game)
+        team_a, team_b, assignments = balance_teams(self.session.game, self.session.joined, elo_by_id, roles_by_id)
         self.session.team_a = team_a
         self.session.team_b = team_b
         self.session.role_assignments = assignments

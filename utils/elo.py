@@ -29,6 +29,7 @@ def compute_rank_points(game: str, tier: str, division: int | None) -> float:
     tiers = config.game_data[game]["tiers"]
     divisions = config.game_data[game]["divisions"]
     points = config.game_data[game]["rank_points"]
+    ascending = config.game_data[game]["divisions_ascend"]
 
     base = points[tier]
     if division is None:
@@ -37,10 +38,11 @@ def compute_rank_points(game: str, tier: str, division: int | None) -> float:
     index = tiers.index(tier)
     if index + 1 >= len(tiers):
         return base #highest tier, nothing to interp towards
-    
-    next_base = points[tiers[index+1]]
+
+    next_base = points[tiers[index + 1]]
     gap = next_base - base
-    return base + gap * (divisions - division) / divisions
+    progress = (division - 1) / divisions if ascending else (divisions - division) / divisions
+    return base + gap * progress
 
 def seed_elo(game: str, rank_value: int | None) -> float:
     """Pick a starting elo for a player with no elo row yet
@@ -50,11 +52,14 @@ def seed_elo(game: str, rank_value: int | None) -> float:
     decoded = decode_rank_value(game, rank_value)
     if decoded is None:
         tiers = config.game_data[game]["tiers"]
-        divisions = config.game_data[game]["divisions"]
         no_division_tiers = config.game_data[game]["no_division_tiers"]
+        ascending = config.game_data[game]["divisions_ascend"]
         lowest_tier = tiers[0]
-        divsion = None if lowest_tier in no_division_tiers else divisions
-        return compute_rank_points(game, lowest_tier, divsion)
+        if lowest_tier in no_division_tiers:
+            division = None
+        else:
+            division = 1 if ascending else config.game_data[game]["divisions"]
+        return compute_rank_points(game, lowest_tier, division)
     tier, division = decoded
     return compute_rank_points(game, tier, division)
 

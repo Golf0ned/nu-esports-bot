@@ -68,5 +68,33 @@ def compute_elo_deltas(
     """Compute each player's individual elo delta for one match.
     
     Computed at team level, then adjusted per player for underdogs/expected winners."""
-    return NotImplementedError
+    avg_a = sum(team_a.values()) / len(team_a)
+    avg_b = sum(team_a.values()) / len(team_b)
 
+    e_a = 1 / (1+ 10 ** ((avg_b - avg_a) / D))
+    e_b = 1 - e_a
+    result_a = 1 if a_won else 0
+    result_b = 1 - result_a
+
+    team_delta_a = K * (result_a - e_a)
+    team_delta_b = K * (result_b - e_b)
+
+    deltas: dict[int, float] = {}
+    for team, opp_avg, result, team_delta in (
+        (team_a, avg_b, result_a, team_delta_a),
+        (team_b, avg_a, result_b, team_delta_b)
+    ):
+        raw = {
+            pid: result - (1 / (1 + 10 ** ((opp_avg - elo) / D)))
+            for pid, elo in team.items()
+        }
+        raw_sum = sum(raw.values())
+        if abs(raw_sum) < 1e-9:
+            share = team_delta / len(team)
+            for pid in team:
+                deltas[pid] = share
+        else:
+            for pid, r in raw.items():
+                deltas[pid] = team_delta * (r / raw_sum)
+
+    return deltas

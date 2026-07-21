@@ -3,6 +3,18 @@ tiers: [Iron, Bronze, Silver, Gold, Platinum, Diamond, Ascendant, Immortal, Radi
 divisions: 3
 no_division_tiers: [Radiant]
 
+# Non-linear per-tier base points used to seed elo from rank (see utils/elo.py).
+rank_points:
+  Iron: 0
+  Bronze: 300
+  Silver: 650
+  Gold: 1050
+  Platinum: 1500
+  Diamond: 2050
+  Ascendant: 2700
+  Immortal: 3450
+  Radiant: 4300
+
 role_requirements:
   Duelist: 1
   Initiator: 1

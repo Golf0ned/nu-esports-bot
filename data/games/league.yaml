@@ -3,6 +3,21 @@ tiers: [Iron, Bronze, Silver, Gold, Platinum, Emerald, Diamond, Master, Grandmas
 divisions: 4
 no_division_tiers: [Master, Grandmaster, Challenger]
 
+# Non-linear per-tier base points used to seed elo from rank (see utils/elo.py).
+# Gaps widen at the top to reflect that Diamond->Master is a much bigger real skill
+# jump than Iron->Bronze, even though both are "one tier." Tune freely.
+rank_points:
+  Iron: 0
+  Bronze: 250
+  Silver: 550
+  Gold: 900
+  Platinum: 1300
+  Emerald: 1750
+  Diamond: 2250
+  Master: 2850
+  Grandmaster: 3250
+  Challenger: 3700
+
 role_requirements:
   Top: 1
   Jungle: 1

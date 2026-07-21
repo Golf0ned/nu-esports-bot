@@ -4,6 +4,7 @@ from discord.ext import commands
 
 from utils import config
 from utils import db
+from utils import elo
 
 
 GUILD_ID = config.secrets["discord"]["guild_id"]
@@ -282,6 +283,14 @@ async def update_record(session: "MatchmakingSession", winners: list[discord.Mem
     await db.perform_many(sqlWin, [(w.id, session.game) for w in winners],)
     await db.perform_many(sqlLose, [(m.id, session.game) for m in losers],)
 
+async def get_team_elos(game: str, members: list[discord.Member]) -> dict[int, float]:
+    """Fetch each player's current elo for a game, seeding+persisting a fresh row
+    from their rank if they don't have one yet."""
+    return NotImplementedError
+
+async def apply_elo_changes(session: 'MatchmakingSession', team_a_won: bool) -> None:
+    """Update profile_elo for every player in the match based on the declared winner."""
+    return NotImplementedError
 
 class MatchmakingSession:
     """Tracks the state of one matchmaking lobby for one (channel, game) pair."""
@@ -489,6 +498,7 @@ class WinnerSelectView(discord.ui.View):
             return
         
         await update_record(self.session, self.session.team_a, self.session.team_b)
+        await apply_elo_changes(self.session, team_a_won=True)
         await self.session.message.edit(
             embed=generate_postgame_embed(self.session, self.session.team_names[0], self.session.team_a),
             view=PostgameView(self.session),
@@ -507,6 +517,7 @@ class WinnerSelectView(discord.ui.View):
             return
         
         await update_record(self.session, self.session.team_b, self.session.team_a)
+        await apply_elo_changes(self.session, team_a_won=False)
         await self.session.message.edit(
             embed=generate_postgame_embed(self.session, self.session.team_names[1], self.session.team_b),
             view=PostgameView(self.session),

@@ -3,6 +3,7 @@ import emoji
 import re
 import random
 from discord.ext import commands
+from urllib.parse import urlsplit
 
 from utils import config
 from utils import db
@@ -226,6 +227,8 @@ class Profile(commands.Cog):
         
         Rejects URLs that don't end in a known image extension before touching the database."""
         await ctx.defer(ephemeral=True)
+
+        path = urlsplit(picture).path if picture else ""
 
         if picture and (not picture.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"))):
             await ctx.followup.send("URL must point directly to an image file (.png, .jpg, .gif, .webp, .svg).", ephemeral=True)

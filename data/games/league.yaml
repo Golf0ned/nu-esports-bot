@@ -18,6 +18,9 @@ rank_points:
   Grandmaster: 3250
   Challenger: 3700
 
+divisions_ascend:
+  false
+
 role_requirements:
   Top: 1
   Jungle: 1

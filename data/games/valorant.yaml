@@ -15,6 +15,9 @@ rank_points:
   Immortal: 3450
   Radiant: 4300
 
+divisions_ascend:
+  true
+
 role_requirements:
   Duelist: 1
   Initiator: 1

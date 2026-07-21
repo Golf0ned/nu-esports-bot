@@ -15,6 +15,9 @@ rank_points:
   Champion: 3800
   Top 500: 4700
 
+divisions_ascend:
+  false
+
 role_requirements:
   Tank: 1
   Damage: 2

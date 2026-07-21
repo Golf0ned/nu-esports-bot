@@ -206,14 +206,13 @@ def balance_teams(game: str,
 
     return team_a, team_b, assignments
 
-def has_privilege(session: "MatchmakingSession", interaction: discord.Interaction) -> bool:
+def has_privilege(interaction: discord.Interaction) -> bool:
     """Check wether whoever clicked a button is allowed to use admin controls.
     
     True if they have a role with "game head" in its name (case-insensitive, substring match), 
-    or if they're the person who started the lobby."""
-    if (interaction.user.guild_permissions.administrator or
-        any("game head" in role.name.lower() for role in interaction.user.roles) 
-        or interaction.user.id == session.owner.id):
+    or if they're an admin."""
+    if (interaction.user.guild_permissions.administrator 
+        or any("game head" in role.name.lower() for role in interaction.user.roles)):
         return True
     return False
 
@@ -396,6 +395,11 @@ class Matchmaking(commands.Cog):
         
         Bumping doesn't reset the lobby, just moves it to the bottom of the channel.
         """
+
+        if not has_privilege(ctx.interaction):
+            await ctx.respond("You're not a game head! Feel free to apply though...", ephemeral=True)
+            return
+
         await ctx.defer()
 
         key = (ctx.channel.id, game)
@@ -476,7 +480,7 @@ class LobbyView(discord.ui.View):
         """Open a private admin panel for gameheads/the lobby owner.
         
         Deletes the user's previous panels first, so repeated clicks don't make multiple stale ephemeral messages."""
-        if not has_privilege(self.session, interaction):
+        if not has_privilege(interaction):
             await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
             return
         
@@ -521,7 +525,7 @@ class SwapSelectView(discord.ui.View):
 
     async def back(self, interaction: discord.Interaction):
         """Return to the admin panel without swapping anyone."""
-        if not has_privilege(self.session, interaction):
+        if not has_privilege(interaction):
             await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
             return
         await interaction.response.edit_message(embed=generate_embed(self.session), view=AdminView(self.session))
@@ -548,7 +552,7 @@ class WinnerSelectView(discord.ui.View):
 
     async def team_a(self, interaction: discord.Interaction) -> None:
         """Declare team_a the winner: record wins/losses, post the postgame embed, end the session."""
-        if not has_privilege(self.session, interaction):
+        if not has_privilege(interaction):
             await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
             return
         
@@ -567,7 +571,7 @@ class WinnerSelectView(discord.ui.View):
     
     async def team_b(self, interaction: discord.Interaction) -> None:
         """Declare team_b the winner: record wins/losses, post the postgame embed, end the session."""
-        if not has_privilege(self.session, interaction):
+        if not has_privilege(interaction):
             await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
             return
         
@@ -586,7 +590,7 @@ class WinnerSelectView(discord.ui.View):
     
     async def back(self, interaction: discord.Interaction) -> None:
         """Return to the admin panel without declaring a winner."""
-        if not has_privilege(self.session, interaction):
+        if not has_privilege(interaction):
             await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
             return
         await interaction.response.edit_message(embed=generate_embed(self.session), view=AdminView(self.session))
@@ -610,7 +614,7 @@ class AdminView(discord.ui.View):
             await interaction.response.send_message("You need an even amount of players to shuffle!", ephemeral=True)
             return
 
-        if not has_privilege(self.session, interaction):
+        if not has_privilege(interaction):
             await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
             return
         
@@ -627,7 +631,7 @@ class AdminView(discord.ui.View):
     @discord.ui.button(label="Swap", style=discord.ButtonStyle.secondary)
     async def swap(self, button: discord.ui.Button, interaction: discord.Interaction) -> None:
         """Open the two-player swap select menu. Requires a shuffle to have happened first."""
-        if not has_privilege(self.session, interaction):
+        if not has_privilege(interaction):
             await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
             return
         if not self.session.role_assignments:
@@ -639,7 +643,7 @@ class AdminView(discord.ui.View):
     @discord.ui.button(label="Winner", style=discord.ButtonStyle.success)
     async def winner(self, button: discord.ui.Button, interaction: discord.Interaction) -> None:
         """Open the team picker to declare a winner. Requires a shuffle to have happened first."""
-        if not has_privilege(self.session, interaction):
+        if not has_privilege(interaction):
             await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
             return
         if not self.session.role_assignments:
@@ -651,7 +655,7 @@ class AdminView(discord.ui.View):
     @discord.ui.button(label="Delete", style=discord.ButtonStyle.danger)
     async def delete(self, button: discord.ui.Button, interaction: discord.Interaction) -> None:
         """Cancel a game."""
-        if not has_privilege(self.session, interaction):
+        if not has_privilege(interaction):
             await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
             return
         
@@ -676,7 +680,7 @@ class CancelConfirmView(discord.ui.View):
 
     async def on_select(self, interaction: discord.Interaction) -> None:
         """Cancel the lobby if confirmed, otherwise return to the admin panel."""
-        if not has_privilege(self.session, interaction):
+        if not has_privilege(interaction):
             await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
             return
 

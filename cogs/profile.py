@@ -703,6 +703,12 @@ class MainsModal(discord.ui.Modal):
             )
             return
         
+        current_primary_row = await db.fetch_one(
+            "SELECT prime FROM profile_primary_mains WHERE discordid = %s AND game = %s;",
+            (self.requester_id, self.game)
+        )
+        current_primary = current_primary_row[0] if current_primary else None
+
         await db.perform_one(
             "DELETE FROM profile_mains WHERE discordid = %s AND game = %s;",
             (self.requester_id, self.game),
@@ -711,6 +717,16 @@ class MainsModal(discord.ui.Modal):
             await db.perform_many(
                 "INSERT INTO profile_mains (discordid, game, main) VALUES (%s, %s, %s);",
                 [(self.requester_id, self.game, m) for m in resolved]
+            )
+        if current_primary and current_primary in resolved:
+            await db.perform_one(
+                """
+                INSERT INTO profile_primary_mains (discordid, game, prime)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (discordid, game)
+                DO UPDATE SET prime = EXCLUDED.prime;
+                """,
+                (self.requester_id, self.game, current_primary),
             )
         if len(resolved) == 1:
             await interaction.response.send_message(

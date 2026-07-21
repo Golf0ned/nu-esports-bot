@@ -160,6 +160,9 @@ def build_game_embed(target: discord.Member,
     embed.set_footer(text=f"Page {page_number}/{total_pages}")
     return embed
 
+def is_game_head(member: discord.Member) -> bool:
+    """Check if a member has a role with "game head" in its name (case-insensitive, substring match)"""
+    return any("game head" in role.names.lower() for role in member.roles)
 
 class Profile(commands.Cog):
     """Cog housing the /profile command group:"""

@@ -321,7 +321,19 @@ async def get_team_elos(game: str, members: list[discord.Member]) -> dict[int, f
 
 async def apply_elo_changes(session: 'MatchmakingSession', team_a_won: bool) -> None:
     """Update profile_elo for every player in the match based on the declared winner."""
-    return NotImplementedError
+    team_a_elo = await get_team_elos(session.game, session.team_a)
+    team_b_elo = await get_team_elos(session.game, session.team_b)
+
+    deltas = elo.compute_elo_deltas(team_a_elo, team_b_elo, team_a_won)
+
+    await db.perform_many(
+        """
+        UPDATE profile_elo
+        SET elo = elo + %s, games_played = games_played + 1, updated_at = CURRENT_TIMESTAMP
+        WHERE discordid = %s AND game = %s;
+        """,
+        [(delta, discordid, session.game) for discordid, delta in deltas.items()],
+    )
 
 class MatchmakingSession:
     """Tracks the state of one matchmaking lobby for one (channel, game) pair."""

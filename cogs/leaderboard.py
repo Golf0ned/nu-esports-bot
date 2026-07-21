@@ -98,7 +98,7 @@ class GameSelectView(discord.ui.View):
         """Block anyone but whoever ran /leaderboard from switching games."""
         if interaction.user.id != self.requester_id:
             await interaction.response.send_message(
-                "This isn't your leaderboard call to flip through!", ephemeral=True
+                "This isn't your interaction call to flip through!", ephemeral=True
             )
             return False
         return True

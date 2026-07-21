@@ -8,7 +8,17 @@ def decode_rank_value(game: str, rank_value: int | None) -> tuple[str, int | Non
 
     Returns None if rank_value is None
     Division is None for tiers without divisions"""
-    return NotImplementedError
+    if rank_value is None:
+        return None
+    tiers = config.game_data[game]["tiers"]
+    divisions = config.game_data[game]["divisions"]
+    no_division_tiers = config.game_data[game]["no_divisions_tiers"]
+
+    index, remainder = divmod(rank_value, divisions)
+    tier = tiers[index]
+    if tier in no_division_tiers:
+        return tier, None
+    return tier, remainder+1
 
 def compute_rank_points(game: str, tier: str, division: int | None) -> float:
     """Convert a tier+division into a seed elo using the game's rank curve

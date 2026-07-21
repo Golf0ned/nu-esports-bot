@@ -33,7 +33,8 @@ cogs_list = [
     "matchmaking",
     "moderation",
     "presence",
-    "profile"
+    "profile",
+    "leaderboard"
 ]
 
 for cog in cogs_list:

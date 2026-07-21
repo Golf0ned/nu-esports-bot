@@ -286,7 +286,38 @@ async def update_record(session: "MatchmakingSession", winners: list[discord.Mem
 async def get_team_elos(game: str, members: list[discord.Member]) -> dict[int, float]:
     """Fetch each player's current elo for a game, seeding+persisting a fresh row
     from their rank if they don't have one yet."""
-    return NotImplementedError
+    ids = [m.id for m in members]
+    
+    elo_rows = await db.fetch_all(
+        "SELECT discordid, elo FROM profile_elo WHERE discordid = ANY(%s) AND game = %s;",
+        (ids, game),
+    )
+    elo_by_id = {discordid: float(value) for discordid, value in elo_rows}
+    
+    missing = [m.id for m in members if m.id not in elo_by_id]
+    if missing:
+        rank_rows = await db.fetch_all(
+            "SELECT discord.id, rank_value FROM profile_stats WHERE discordid = ANY(%s) AND game = %s;",
+            (missing, game),
+        )
+        rank_by_id = {discordid: rank_value for discordid, rank_value in rank_rows}
+
+        seeded = []
+        for discordid in missing:
+            value = elo.seed_elo(game, rank_by_id.get(discordid))
+            elo_by_id[discordid] = value
+            seeded.append((discordid, game, value))
+
+        await db.perform_many(
+            """
+            INSERT INTO profile_elo (discordid, game, elo)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (discordid, game) DO NOTHING
+            """,
+            seeded,
+        )
+
+    return elo_by_id
 
 async def apply_elo_changes(session: 'MatchmakingSession', team_a_won: bool) -> None:
     """Update profile_elo for every player in the match based on the declared winner."""

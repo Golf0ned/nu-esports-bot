@@ -28,7 +28,7 @@ def compute_rank_points(game: str, tier: str, division: int | None) -> float:
     Flat (no-division) tiers return their base value directly."""
     tiers = config.game_data[game]["tiers"]
     divisions = config.game_data[game]["divisions"]
-    no_division_tiers = config.game_data[game]["no_divisions_tiers"]
+    points = config.game_data[game]["points"]
 
     base = points[tier]
     if division is None:
@@ -47,7 +47,16 @@ def seed_elo(game: str, rank_value: int | None) -> float:
 
     Uses their current rank if they have one; falls back to this game's lowest
     tier if they've never set a rank (safest assumption: unproven, not average)."""
-    return NotImplementedError
+    decoded = decode_rank_value(game, rank_value)
+    if decoded is None:
+        tiers = config.game_data[game]["tiers"]
+        divisions = config.game_data[game]["divisions"]
+        no_division_tiers = config.game_data[game]["no_divisions_tiers"]
+        lowest_tier = tiers[0]
+        divsion = None if lowest_tier in no_division_tiers else divisions
+        return compute_rank_points(game, lowest_tier, divsion)
+    tier, division = decoded
+    return compute_rank_points(game, tier, division)
 
 def compute_elo_deltas(
     team_a: dict[int, float],

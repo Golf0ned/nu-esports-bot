@@ -604,8 +604,14 @@ class Profile(commands.Cog):
             (target.id,)
         )
 
+        tag_row = await db.fetch_one(
+            "SELECT tag FROM profiles WHERE discordid = %s;",
+            (target.id,)
+        )
+        tag = tag_row[0] if tag_row and tag_row[0] else "⚔️"
+
         embed = discord.Embed(
-            title=f"{target.display_name}'s Elo",
+            title=f"{tag} {target.display_name}'s Elo",
             color=discord.Color.from_rgb(78, 42, 132),
         )
         if not rows:

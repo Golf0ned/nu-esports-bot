@@ -710,7 +710,7 @@ class MainsModal(discord.ui.Modal):
             "SELECT prime FROM profile_primary_mains WHERE discordid = %s AND game = %s;",
             (self.requester_id, self.game)
         )
-        current_primary = current_primary_row[0] if current_primary else None
+        current_primary = current_primary_row[0] if current_primary_row else None
 
         await db.perform_one(
             "DELETE FROM profile_mains WHERE discordid = %s AND game = %s;",

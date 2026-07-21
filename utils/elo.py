@@ -12,7 +12,7 @@ def decode_rank_value(game: str, rank_value: int | None) -> tuple[str, int | Non
         return None
     tiers = config.game_data[game]["tiers"]
     divisions = config.game_data[game]["divisions"]
-    no_division_tiers = config.game_data[game]["no_divisions_tiers"]
+    no_division_tiers = config.game_data[game]["no_division_tiers"]
 
     index, remainder = divmod(rank_value, divisions)
     tier = tiers[index]
@@ -51,7 +51,7 @@ def seed_elo(game: str, rank_value: int | None) -> float:
     if decoded is None:
         tiers = config.game_data[game]["tiers"]
         divisions = config.game_data[game]["divisions"]
-        no_division_tiers = config.game_data[game]["no_divisions_tiers"]
+        no_division_tiers = config.game_data[game]["no_division_tiers"]
         lowest_tier = tiers[0]
         divsion = None if lowest_tier in no_division_tiers else divisions
         return compute_rank_points(game, lowest_tier, divsion)
@@ -69,7 +69,7 @@ def compute_elo_deltas(
     
     Computed at team level, then adjusted per player for underdogs/expected winners."""
     avg_a = sum(team_a.values()) / len(team_a)
-    avg_b = sum(team_a.values()) / len(team_b)
+    avg_b = sum(team_b.values()) / len(team_b)
 
     e_a = 1 / (1+ 10 ** ((avg_b - avg_a) / D))
     e_b = 1 - e_a

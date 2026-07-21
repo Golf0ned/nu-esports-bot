@@ -297,7 +297,7 @@ async def get_team_elos(game: str, members: list[discord.Member]) -> dict[int, f
     missing = [m.id for m in members if m.id not in elo_by_id]
     if missing:
         rank_rows = await db.fetch_all(
-            "SELECT discord.id, rank_value FROM profile_stats WHERE discordid = ANY(%s) AND game = %s;",
+            "SELECT discordid, rank_value FROM profile_stats WHERE discordid = ANY(%s) AND game = %s;",
             (missing, game),
         )
         rank_by_id = {discordid: rank_value for discordid, rank_value in rank_rows}
@@ -628,7 +628,7 @@ class AdminView(discord.ui.View):
     async def winner(self, button: discord.ui.Button, interaction: discord.Interaction) -> None:
         """Open the team picker to declare a winner. Requires a shuffle to have happened first."""
         if not has_privilege(self.session, interaction):
-            await interaction.response.send_message("Youre not a game head! Feel free to apply though...", ephemeral=True)
+            await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
             return
         if not self.session.role_assignments:
             await interaction.response.send_message("Shuffle first before deciding a winner!", ephemeral=True)

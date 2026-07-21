@@ -26,7 +26,21 @@ def compute_rank_points(game: str, tier: str, division: int | None) -> float:
     Interpolates within a tier toward the next tier's base value (division 1 sits
     closest to the next tier, division `divisions` sits at this tier's own base).
     Flat (no-division) tiers return their base value directly."""
-    return NotImplementedError
+    tiers = config.game_data[game]["tiers"]
+    divisions = config.game_data[game]["divisions"]
+    no_division_tiers = config.game_data[game]["no_divisions_tiers"]
+
+    base = points[tier]
+    if division is None:
+        return base
+    
+    index = tiers.index(tier)
+    if index + 1 >= len(tiers):
+        return base #highest tier, nothing to interp towards
+    
+    next_base = points[tiers[index+1]]
+    gap = next_base - base
+    return base + gap * (divisions - division) / divisions
 
 def seed_elo(game: str, rank_value: int | None) -> float:
     """Pick a starting elo for a player with no elo row yet

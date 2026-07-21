@@ -3,6 +3,21 @@ tiers: [Bronze, Silver, Gold, Platinum, Diamond, Master, Grandmaster, Champion, 
 divisions: 5
 no_division_tiers: [Top 500]
 
+# Non-linear per-tier base points used to seed elo from rank (see utils/elo.py).
+rank_points:
+  Bronze: 0
+  Silver: 350
+  Gold: 750
+  Platinum: 1200
+  Diamond: 1700
+  Master: 2300
+  Grandmaster: 3000
+  Champion: 3800
+  Top 500: 4700
+
+divisions_ascend:
+  false
+
 role_requirements:
   Tank: 1
   Damage: 2

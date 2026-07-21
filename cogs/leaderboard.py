@@ -114,13 +114,35 @@ class GameSelectView(discord.ui.View):
             await interaction.response.edit_message(
                 content=f"No one currently in the server has played {game.title()} yet!",
                 embed=None,
-                view=None,
+                view=EmptyLeaderboardView(requester_id=self.requester_id, guild=self.guild),
             )
             return
 
         paginator = LeaderboardPaginator(requester_id=self.requester_id, pages=pages, guild=self.guild)
         await interaction.response.edit_message(content=None, embed=pages[0], view=paginator)
         paginator.message = await interaction.original_response()
+
+class EmptyLeaderboardView(discord.ui.View):
+    """Shown when a game's leaderboard has nobody on it, just a way to switch games."""
+
+    def __init__(self, requester_id: int, guild: discord.Guild):
+        super().__init__(timeout=120)
+        self.requester_id = requester_id
+        self.guild = guild
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        """Block anyone but whoever ran /leaderboard from switching games."""
+        if interaction.user.id != self.requester_id:
+            await interaction.response.send_message(
+                "This isn't your leaderboard call to flip through!", ephemeral=True
+            )
+            return False
+        return True
+
+    @discord.ui.button(label="Change Game", style=discord.ButtonStyle.primary)
+    async def change_game(self, button: discord.ui.Button, interaction: discord.Interaction) -> None:
+        """Swap to a dropdown for picking a different game's leaderboard."""
+        await interaction.response.edit_message(content=None, view=GameSelectView(requester_id=self.requester_id, guild=self.guild))
 
 class LeaderboardPaginator(discord.ui.View):
     """Left/right paginator over a leaderboard's pages of 10, restricted to whoever ran the command."""
@@ -204,7 +226,10 @@ class Leaderboard(commands.Cog):
         pages = build_leaderboard_pages(ctx.guild, game, rows, ctx.author.id)
 
         if pages is None:
-            await ctx.followup.send(f"No one currently in the server has played {game.title()} yet!")
+            await ctx.followup.send(
+                f"No one currently in the server has played {game.title()} yet!",
+                view=EmptyLeaderboardView(requester_id=ctx.author.id, guild=ctx.guild),
+            )
             return
 
         paginator = LeaderboardPaginator(requester_id=ctx.author.id, pages=pages, guild=ctx.guild)

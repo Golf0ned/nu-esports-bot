@@ -64,8 +64,8 @@ def setup(bot):
 
 
 def random_map(flags):
-    maps = config.config["valorant"]["maps"]
-    maps_active = config.config["valorant"]["maps_active"]
+    maps = config.game_data["valorant"]["maps"]
+    maps_active = config.game_data["valorant"]["maps_active"]
 
     match flags:
         case "active":
@@ -77,9 +77,9 @@ def random_map(flags):
 
 
 def random_team(flags):
-    agents = config.config["valorant"]["agents"]
+    agents = config.game_data["valorant"]["characters"]
     agents_roles = copy.deepcopy(
-        config.config["valorant"]["agents_roles"]
+        config.game_data["valorant"]["agents_roles"]
     )  # copy because pop
 
     match flags:

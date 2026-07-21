@@ -28,8 +28,8 @@ class Gameroom(commands.Cog):
         name="hours", description="Lists current game room hours", guild_ids=[GUILD_ID]
     )
     async def hours(self, ctx):
-        default_hours = config.config["gameroom"]["default_hours"]
-        adjusted_hours = config.config["gameroom"].get("adjusted_hours", {})
+        default_hours = config.gameroom_data["default_hours"]
+        adjusted_hours = config.gameroom_data.get("adjusted_hours", {})
 
         today = datetime.date.today()
         start = today - datetime.timedelta(days=today.weekday())
@@ -62,7 +62,7 @@ class Gameroom(commands.Cog):
         guild_ids=[GUILD_ID],
     )
     async def games(self, ctx):
-        games = config.config["gameroom"]["games"]
+        games = config.gameroom_data["games"]
 
         embed = discord.Embed(
             title="Game Room Games",

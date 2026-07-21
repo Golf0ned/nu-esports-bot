@@ -1,0 +1,61 @@
+roles: [Duelist, Initiator, Controller, Sentinel, Flex]
+tiers: [Iron, Bronze, Silver, Gold, Platinum, Diamond, Ascendant, Immortal, Radiant]
+divisions: 3
+no_division_tiers: [Radiant]
+
+role_requirements:
+  Duelist: 1
+  Initiator: 1
+  Controller: 1
+  Sentinel: 1
+
+maps: # Release order
+  - 'Bind'
+  - 'Haven'
+  - 'Split'
+  - 'Ascent'
+  - 'Icebox'
+  - 'Breeze'
+  - 'Fracture'
+  - 'Pearl'
+  - 'Lotus'
+  - 'Sunset'
+  - 'Abyss'
+maps_active: [1, 2, 3, 4, 6, 7, 8]
+
+characters: # Release order
+  - Brimstone
+  - Viper
+  - Omen
+  - Cypher
+  - Sova
+  - Sage
+  - Phoenix
+  - Jett
+  - Raze
+  - Breach
+  - Reyna
+  - Killjoy
+  - Skye
+  - Yoru
+  - Astra
+  - 'KAY/O'
+  - Chamber
+  - Neon
+  - Fade
+  - Harbor
+  - Gekko
+  - Deadlock
+  - Iso
+  - Clove
+  - Vyse
+  - Tejo
+  - Waylay
+  - Veto
+  - Miks
+
+agents_roles:
+  controller: [0, 2, 14, 19, 23]
+  duelist: [6, 7, 8, 10, 13, 17, 22, 26]
+  initiator: [4, 9, 12, 15, 18, 20, 25]
+  sentinel: [1, 3, 5, 11, 16, 21, 24] # Viper's here for better randomized teams

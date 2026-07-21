@@ -1,0 +1,63 @@
+roles: [Tank, Damage, Support, Flex]
+tiers: [Bronze, Silver, Gold, Platinum, Diamond, Master, Grandmaster, Champion, Top 500]
+divisions: 5
+no_division_tiers: [Top 500]
+
+role_requirements:
+  Tank: 1
+  Damage: 2
+  Support: 2
+
+characters: # Alphabetically
+  - Ana
+  - Anran
+  - Ashe
+  - Baptiste
+  - Bastion
+  - Brigitte
+  - Cassidy
+  - D.Va
+  - Domina
+  - Doomfist
+  - Echo
+  - Emre
+  - Freja
+  - Genji
+  - Hanzo
+  - Hazard
+  - Illari
+  - Jetpack Cat
+  - Junker Queen
+  - Junkrat
+  - Juno
+  - Kiriko
+  - Lifeweaver
+  - Lúcio
+  - Mauga
+  - Mei
+  - Mercy
+  - Mizuki
+  - Moira
+  - Orisa
+  - Pharah
+  - Ramattra
+  - Reaper
+  - Reinhardt
+  - Roadhog 
+  - Shion
+  - Sierra
+  - Sigma
+  - Sojurn
+  - 'Soldier: 76'
+  - Sombra
+  - Symmetra
+  - Torbjörn
+  - Tracer
+  - Vendetta
+  - Venture
+  - Widowmaker
+  - Winston
+  - Wrecking Ball
+  - Wuyang
+  - Zarya
+  - Zenyatta

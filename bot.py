@@ -30,8 +30,10 @@ cogs_list = [
     "game",
     "connections",
     "pugs",
+    "matchmaking",
     "moderation",
     "presence",
+    "profile"
 ]
 
 for cog in cogs_list:

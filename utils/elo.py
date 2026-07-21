@@ -28,7 +28,7 @@ def compute_rank_points(game: str, tier: str, division: int | None) -> float:
     Flat (no-division) tiers return their base value directly."""
     tiers = config.game_data[game]["tiers"]
     divisions = config.game_data[game]["divisions"]
-    points = config.game_data[game]["points"]
+    points = config.game_data[game]["rank_points"]
 
     base = points[tier]
     if division is None:

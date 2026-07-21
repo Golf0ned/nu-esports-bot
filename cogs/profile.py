@@ -230,7 +230,7 @@ class Profile(commands.Cog):
 
         path = urlsplit(picture).path if picture else ""
 
-        if picture and (not picture.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"))):
+        if picture and (not path.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"))):
             await ctx.followup.send("URL must point directly to an image file (.png, .jpg, .gif, .webp, .svg).", ephemeral=True)
             return
         sql = None

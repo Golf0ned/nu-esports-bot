@@ -162,7 +162,7 @@ def build_game_embed(target: discord.Member,
 
 def is_game_head(member: discord.Member) -> bool:
     """Check if a member has a role with "game head" in its name (case-insensitive, substring match)"""
-    return any("game head" in role.name.lower() for role in member.roles)
+    return member.guild_permissions.administrator or any("game head" in role.name.lower() for role in member.roles)
 
 class Profile(commands.Cog):
     """Cog housing the /profile command group:"""

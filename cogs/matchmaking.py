@@ -214,7 +214,9 @@ def has_privilege(session: "MatchmakingSession", interaction: discord.Interactio
     
     True if they have a role with "game head" in its name (case-insensitive, substring match), 
     or if they're the person who started the lobby."""
-    if (any("game head" in role.name.lower() for role in interaction.user.roles) or interaction.user.id == session.owner.id):
+    if (interaction.user.guild_permissions.administrator or
+        any("game head" in role.name.lower() for role in interaction.user.roles) 
+        or interaction.user.id == session.owner.id):
         return True
     return False
 

@@ -1,0 +1,66 @@
+roles: []
+tiers: [Initiate, Seeker, Alchemist, Arcanist, Ritualist, Emissary, Archon, Oracle, Phantom, Ascendant, Eternus]
+divisions: 6
+no_division_tiers: [] # Tiers that aren't divisioned, like Challenger in League
+
+# Non-linear per-tier base points used to seed elo from rank (see utils/elo.py).
+# Gaps widen at the top to reflect that Diamond->Master is a much bigger real skill
+# jump than Iron->Bronze, even though both are "one tier." Tune freely.
+rank_points:
+  Initiate: 0
+  Seeker: 300
+  Alchemist: 600
+  Arcanist: 900
+  Ritualist: 1300
+  Emissary: 1700
+  Archon: 2300
+  Oracle: 3100
+  Phantom: 3800
+  Ascendant: 4600
+  Eternus: 6000
+
+divisions_ascend:
+  true # lowest in a division is 1, highest is 6
+
+role_requirements:
+  {}
+
+characters: # Alphabetically
+  - Abrams
+  - Apollo
+  - Bebop
+  - Billy
+  - Calico
+  - Celeste
+  - Doorman
+  - Drifter
+  - Dynamo
+  - Graves
+  - Grey Talon
+  - Haze
+  - Holliday
+  - Infernus
+  - Ivy
+  - Kelvin
+  - Lady Geist
+  - Lash
+  - McGinnis
+  - Mina
+  - Mirage
+  - Mo & Krill
+  - Paige
+  - Paradox
+  - Pocket
+  - Rem
+  - Seven
+  - Shiv
+  - Silver
+  - Sinclair
+  - Venator
+  - Victor
+  - Vindicta
+  - Viscous
+  - Vyper
+  - Warden
+  - Wraith
+  - Yamato

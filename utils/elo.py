@@ -36,10 +36,13 @@ def compute_rank_points(game: str, tier: str, division: int | None) -> float:
         return base
     
     index = tiers.index(tier)
-    if index + 1 >= len(tiers):
+    if index + 1 < len(tiers):
+        next_base = points[tiers[index+1]]
+    elif index > 0:
+        next_base = base + (base - points[tiers[index - 1]])
+    else:
         return base #highest tier, nothing to interp towards
 
-    next_base = points[tiers[index + 1]]
     gap = next_base - base
     progress = (division - 1) / divisions if ascending else (divisions - division) / divisions
     return base + gap * progress

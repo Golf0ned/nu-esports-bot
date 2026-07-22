@@ -356,6 +356,10 @@ class Profile(commands.Cog):
         """Open a multi-select menu to set your role(s) for a game."""
         await ctx.defer(ephemeral=True)
 
+        if not get_roles(game):
+            await ctx.followup.send(f"{game.title()} doesn't have roles to set!", ephemeral=True)
+            return
+
         rows = await db.fetch_all(
             "SELECT role FROM profile_roles WHERE discordid = %s AND game = %s;",
             (ctx.author.id , game),

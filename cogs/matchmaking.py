@@ -11,7 +11,7 @@ GUILD_ID = config.secrets["discord"]["guild_id"]
 GAME_CHOICES = list(config.game_data.keys())
 DEFAULT_TAG = {"Lobby": "🖱️", "Winner": "🏆"}
 TEAM_NAMES = [tuple(pair) for pair in config.matchmaking_data["team_names"]]
-ROLE_REQUIREMENTS = {game: data.get("role_requirements", {}) for game, data in config.game_data.items()}
+ROLE_REQUIREMENTS = {game: data.get("role_requirements") or {} for game, data in config.game_data.items()}
 RANK_JITTER = 200        # half-width of the jitter range for a player exactly at the lobby average
 JITTER_PULL_SCALE = 1500 # elo deviation from average that fully saturates the pull toward one side
 
@@ -79,6 +79,7 @@ def generate_match_embed(session: "MatchmakingSession") -> discord.Embed:
         title=f"{session.game.title()} Lobby — Teams",
         color=discord.Color.from_rgb(78, 42, 132),
     )
+    has_roles = bool(ROLE_REQUIREMENTS[session.game])
     lane_order = {lane: i for i, lane in enumerate(ROLE_REQUIREMENTS[session.game])}
     def team_rows(team):
         ordered = sorted(
@@ -88,8 +89,11 @@ def generate_match_embed(session: "MatchmakingSession") -> discord.Embed:
         rows = []
         for member in ordered:
             tag = session.tags.get(member.id, DEFAULT_TAG.get("Lobby"))
-            lane = session.role_assignments.get(member.id, "?")
-            rows.append(f"**{lane}** — {tag} {member.display_name}")
+            if has_roles:
+                lane = session.role_assignments.get(member.id, "?")
+                rows.append(f"**{lane}** — {tag} {member.display_name}")
+            else:
+                rows.append(f"{tag} {member.display_name}")
         return "\n".join(rows) if rows else "-"
     embed.add_field(name=session.team_names[0], value=team_rows(session.team_a), inline=True)
     embed.add_field(name=session.team_names[1], value=team_rows(session.team_b), inline=True)

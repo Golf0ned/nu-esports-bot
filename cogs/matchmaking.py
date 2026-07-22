@@ -4,14 +4,17 @@ from discord.ext import commands
 
 from utils import config
 from utils import db
+from utils import elo
 
 
 GUILD_ID = config.secrets["discord"]["guild_id"]
 GAME_CHOICES = list(config.game_data.keys())
 DEFAULT_TAG = {"Lobby": "🖱️", "Winner": "🏆"}
 TEAM_NAMES = [tuple(pair) for pair in config.matchmaking_data["team_names"]]
-ROLE_REQUIREMENTS = {game: data.get("role_requirements", {}) for game, data in config.game_data.items()}
-RANK_JITTER = 2 # determines randomness in shuffling
+ROLE_REQUIREMENTS = {game: data.get("role_requirements") or {} for game, data in config.game_data.items()}
+LOBBY_SIZE = {game: data.get("lobby_size", 10) for game, data in config.game_data.items()}
+RANK_JITTER = 200        # half-width of the jitter range for a player exactly at the lobby average
+JITTER_PULL_SCALE = 1500 # elo deviation from average that fully saturates the pull toward one side
 
 
 def generate_embed(session: "MatchmakingSession") -> discord.Embed:
@@ -22,13 +25,15 @@ def generate_embed(session: "MatchmakingSession") -> discord.Embed:
     """
     if session.role_assignments:
         return generate_match_embed(session)
+    lobby_size = LOBBY_SIZE[session.game]
     embed = discord.Embed(
         title=f"{session.game.title()} Lobby",
-        description=f"({len(session.joined)}/10)",
+        description=f"({len(session.joined)}/{lobby_size})",
         color = discord.Color.from_rgb(78,42,132),
     )
-    left_rows = ["-"] * 5
-    right_rows = ["-"] * 5
+    rows_per_column = lobby_size // 2
+    left_rows = ["-"] * rows_per_column
+    right_rows = ["-"] * rows_per_column
     for i, member in enumerate(session.joined):
         tag = session.tags.get(member.id, DEFAULT_TAG.get("Lobby"))
         entry = f"{tag} {member.display_name}"
@@ -77,6 +82,7 @@ def generate_match_embed(session: "MatchmakingSession") -> discord.Embed:
         title=f"{session.game.title()} Lobby — Teams",
         color=discord.Color.from_rgb(78, 42, 132),
     )
+    has_roles = bool(ROLE_REQUIREMENTS[session.game])
     lane_order = {lane: i for i, lane in enumerate(ROLE_REQUIREMENTS[session.game])}
     def team_rows(team):
         ordered = sorted(
@@ -86,8 +92,11 @@ def generate_match_embed(session: "MatchmakingSession") -> discord.Embed:
         rows = []
         for member in ordered:
             tag = session.tags.get(member.id, DEFAULT_TAG.get("Lobby"))
-            lane = session.role_assignments.get(member.id, "?")
-            rows.append(f"**{lane}** — {tag} {member.display_name}")
+            if has_roles:
+                lane = session.role_assignments.get(member.id, "?")
+                rows.append(f"**{lane}** — {tag} {member.display_name}")
+            else:
+                rows.append(f"{tag} {member.display_name}")
         return "\n".join(rows) if rows else "-"
     embed.add_field(name=session.team_names[0], value=team_rows(session.team_a), inline=True)
     embed.add_field(name=session.team_names[1], value=team_rows(session.team_b), inline=True)
@@ -104,14 +113,9 @@ async def get_game_shuffle_data(joined: list[discord.Member], game: str) -> tupl
     
     Returns (rank_by_id, roles_by_id), both keyed by discord member id.
     """
+    elo_by_id = await get_team_elos(game, joined)
+
     ids = [m.id for m in joined]
-
-    rank_rows = await db.fetch_all(
-        "SELECT discordid, rank_value FROM profile_stats WHERE discordid = ANY(%s) AND game = %s;",
-        (ids, game),
-    )
-    rank_by_id = {discordid: rank_value for discordid, rank_value in rank_rows if rank_value is not None}
-
     role_rows = await db.fetch_all(
         "SELECT discordid, role FROM profile_roles WHERE discordid = ANY(%s) AND game = %s;",
         (ids, game),
@@ -120,20 +124,20 @@ async def get_game_shuffle_data(joined: list[discord.Member], game: str) -> tupl
     for discordid, role in role_rows:
         roles_by_id.setdefault(discordid, []).append(role)
 
-    known_ranks = list(rank_by_id.values())
-    average_rank = sum(known_ranks) / len(known_ranks) if known_ranks else 0
-
     for member in joined:
-        rank_by_id.setdefault(member.id, average_rank)
         roles_by_id.setdefault(member.id, ["Flex"])
-    
-    return rank_by_id, roles_by_id
 
-def balance_teams(game: str, joined: list[discord.Member], rank_by_id: dict[int, float], roles_by_id: dict[int, list[str]]) -> tuple[
-                                                                                                                                    list[discord.Member],
-                                                                                                                                    list[discord.Member],
-                                                                                                                                    dict[int, str]
-                                                                                                                                    ]:
+    return elo_by_id, roles_by_id
+
+def balance_teams(game: str, 
+                  joined: list[discord.Member], 
+                  elo_by_id: dict[int, float], 
+                  roles_by_id: dict[int, list[str]]
+                  ) -> tuple[
+                            list[discord.Member],
+                            list[discord.Member],
+                            dict[int, str]
+                            ]:
     """Split joined players into two balanced teams
     
     Process each required role (in random order, so repeated shuffles vary) and greedily assign the needed number of players per team,
@@ -155,8 +159,9 @@ def balance_teams(game: str, joined: list[discord.Member], rank_by_id: dict[int,
             selected.append((role, count))
             used += count
 
-    effective_rank = {
-        m.id: rank_by_id[m.id] + random.uniform(-RANK_JITTER, RANK_JITTER)
+    avg_elo = sum(elo_by_id[m.id] for m in joined) / len(joined)
+    effective_elo = {
+        m.id: jittered_elo(elo_by_id[m.id], avg_elo)
         for m in joined
     }
 
@@ -181,39 +186,40 @@ def balance_teams(game: str, joined: list[discord.Member], rank_by_id: dict[int,
             needed = needed_total - len(candidates)
             candidates += [m for m in remaining if m.id not in candidate_ids][:needed]
 
-        candidates = sorted(candidates, key=lambda m: effective_rank[m.id], reverse=True)[:needed_total]
+        candidates = sorted(candidates, key=lambda m: effective_elo[m.id], reverse=True)[:needed_total]
         
         for m in candidates:
             if len(team_a) < len(team_b) or (len(team_a) == len(team_b) and team_a_total <= team_b_total):
                 team_a.append(m)
-                team_a_total += effective_rank[m.id]
+                team_a_total += effective_elo[m.id]
             else:
                 team_b.append(m)
-                team_b_total += effective_rank[m.id]
+                team_b_total += effective_elo[m.id]
             assignments[m.id] = role
 
         chosen_ids = {m.id for m in candidates}
         remaining = [m for m in remaining if m.id not in chosen_ids]
 
-    remaining_sorted = sorted(remaining, key=lambda m: effective_rank[m.id], reverse=True)
+    remaining_sorted = sorted(remaining, key=lambda m: effective_elo[m.id], reverse=True)
     for m in remaining_sorted:
         if len(team_a) < len(team_b) or (len(team_a) == len(team_b) and team_a_total <= team_b_total):
             team_a.append(m)
-            team_a_total += effective_rank[m.id]
+            team_a_total += effective_elo[m.id]
 
         else:
             team_b.append(m)
-            team_b_total += effective_rank[m.id]
+            team_b_total += effective_elo[m.id]
         assignments[m.id] = roles_by_id[m.id][0]
 
     return team_a, team_b, assignments
 
-def has_privilege(session: "MatchmakingSession", interaction: discord.Interaction) -> bool:
+def has_privilege(interaction: discord.Interaction) -> bool:
     """Check wether whoever clicked a button is allowed to use admin controls.
     
     True if they have a role with "game head" in its name (case-insensitive, substring match), 
-    or if they're the person who started the lobby."""
-    if (any("game head" in role.name.lower() for role in interaction.user.roles) or interaction.user.id == session.owner.id):
+    or if they're an admin."""
+    if (interaction.user.guild_permissions.administrator 
+        or any("game head" in role.name.lower() for role in interaction.user.roles)):
         return True
     return False
 
@@ -265,6 +271,19 @@ def swap_slots(session: "MatchmakingSession", id_a: int, id_b: int) -> bool:
 
     return True
 
+def jittered_elo(player_elo: float, avg_elo: float, half_width: float = RANK_JITTER, pull_scale: float = JITTER_PULL_SCALE) -> float:
+    """Add a random jitter to a player's elo, biased to pull them toward the lobby average.
+    
+    The jitter's total width stays constant, but its center slides based on how far below/above
+    average the player is: someone well below average gets a jitter that's entirely upside (never
+    randomly pushed even lower), someone well above average gets one that's entirely downside, and
+    someone right at the average gets the old symmetric +/- jitter, unbiased either way.
+    """
+    deviation = avg_elo - player_elo
+    pull = max(-1.0, min(1.0, deviation / pull_scale))
+    center = pull * half_width
+    return player_elo + random.uniform(center - half_width, center + half_width)
+
 async def update_record(session: "MatchmakingSession", winners: list[discord.Member], losers: list[discord.Member]) -> None:
     """Record a win for each player in `winners` and a loss for each player in `losers`
     in profile_stats, for the current session's game."""
@@ -282,6 +301,57 @@ async def update_record(session: "MatchmakingSession", winners: list[discord.Mem
     await db.perform_many(sqlWin, [(w.id, session.game) for w in winners],)
     await db.perform_many(sqlLose, [(m.id, session.game) for m in losers],)
 
+async def get_team_elos(game: str, members: list[discord.Member]) -> dict[int, float]:
+    """Fetch each player's current elo for a game, seeding+persisting a fresh row
+    from their rank if they don't have one yet."""
+    ids = [m.id for m in members]
+    
+    elo_rows = await db.fetch_all(
+        "SELECT discordid, elo FROM profile_elo WHERE discordid = ANY(%s) AND game = %s;",
+        (ids, game),
+    )
+    elo_by_id = {discordid: float(value) for discordid, value in elo_rows}
+    
+    missing = [m.id for m in members if m.id not in elo_by_id]
+    if missing:
+        rank_rows = await db.fetch_all(
+            "SELECT discordid, rank_value FROM profile_stats WHERE discordid = ANY(%s) AND game = %s;",
+            (missing, game),
+        )
+        rank_by_id = {discordid: rank_value for discordid, rank_value in rank_rows}
+
+        seeded = []
+        for discordid in missing:
+            value = elo.seed_elo(game, rank_by_id.get(discordid))
+            elo_by_id[discordid] = value
+            seeded.append((discordid, game, value))
+
+        await db.perform_many(
+            """
+            INSERT INTO profile_elo (discordid, game, elo)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (discordid, game) DO NOTHING
+            """,
+            seeded,
+        )
+
+    return elo_by_id
+
+async def apply_elo_changes(session: 'MatchmakingSession', team_a_won: bool) -> None:
+    """Update profile_elo for every player in the match based on the declared winner."""
+    team_a_elo = await get_team_elos(session.game, session.team_a)
+    team_b_elo = await get_team_elos(session.game, session.team_b)
+
+    deltas = elo.compute_elo_deltas(team_a_elo, team_b_elo, team_a_won)
+
+    await db.perform_many(
+        """
+        UPDATE profile_elo
+        SET elo = elo + %s, games_played = games_played + 1, updated_at = CURRENT_TIMESTAMP
+        WHERE discordid = %s AND game = %s;
+        """,
+        [(delta, discordid, session.game) for discordid, delta in deltas.items()],
+    )
 
 class MatchmakingSession:
     """Tracks the state of one matchmaking lobby for one (channel, game) pair."""
@@ -332,6 +402,11 @@ class Matchmaking(commands.Cog):
         
         Bumping doesn't reset the lobby, just moves it to the bottom of the channel.
         """
+
+        if not has_privilege(ctx.interaction):
+            await ctx.respond("You're not a game head! Feel free to apply though...", ephemeral=True)
+            return
+
         await ctx.defer()
 
         key = (ctx.channel.id, game)
@@ -369,7 +444,7 @@ class LobbyView(discord.ui.View):
     def __init__(self, session):
         super().__init__(timeout=None)
         self.session = session
-        self.join.disabled = len(session.joined) >= 10
+        self.join.disabled = len(session.joined) >= LOBBY_SIZE[session.game]
 
     @discord.ui.button(label="Join", style=discord.ButtonStyle.success)
     async def join(self, button: discord.ui.Button, interaction: discord.Interaction) -> None:
@@ -377,7 +452,7 @@ class LobbyView(discord.ui.View):
         if any(m.id == interaction.user.id for m in self.session.joined):
             await interaction.response.send_message("You've already joined!", ephemeral=True)
             return
-        if len(self.session.joined) >= 10:
+        if len(self.session.joined) >= LOBBY_SIZE[self.session.game]:
             await interaction.response.send_message("Lobby already full... :/", ephemeral=True)
             return
         
@@ -412,7 +487,7 @@ class LobbyView(discord.ui.View):
         """Open a private admin panel for gameheads/the lobby owner.
         
         Deletes the user's previous panels first, so repeated clicks don't make multiple stale ephemeral messages."""
-        if not has_privilege(self.session, interaction):
+        if not has_privilege(interaction):
             await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
             return
         
@@ -457,7 +532,7 @@ class SwapSelectView(discord.ui.View):
 
     async def back(self, interaction: discord.Interaction):
         """Return to the admin panel without swapping anyone."""
-        if not has_privilege(self.session, interaction):
+        if not has_privilege(interaction):
             await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
             return
         await interaction.response.edit_message(embed=generate_embed(self.session), view=AdminView(self.session))
@@ -484,11 +559,12 @@ class WinnerSelectView(discord.ui.View):
 
     async def team_a(self, interaction: discord.Interaction) -> None:
         """Declare team_a the winner: record wins/losses, post the postgame embed, end the session."""
-        if not has_privilege(self.session, interaction):
+        if not has_privilege(interaction):
             await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
             return
         
         await update_record(self.session, self.session.team_a, self.session.team_b)
+        await apply_elo_changes(self.session, team_a_won=True)
         await self.session.message.edit(
             embed=generate_postgame_embed(self.session, self.session.team_names[0], self.session.team_a),
             view=PostgameView(self.session),
@@ -502,11 +578,12 @@ class WinnerSelectView(discord.ui.View):
     
     async def team_b(self, interaction: discord.Interaction) -> None:
         """Declare team_b the winner: record wins/losses, post the postgame embed, end the session."""
-        if not has_privilege(self.session, interaction):
+        if not has_privilege(interaction):
             await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
             return
         
         await update_record(self.session, self.session.team_b, self.session.team_a)
+        await apply_elo_changes(self.session, team_a_won=False)
         await self.session.message.edit(
             embed=generate_postgame_embed(self.session, self.session.team_names[1], self.session.team_b),
             view=PostgameView(self.session),
@@ -520,7 +597,7 @@ class WinnerSelectView(discord.ui.View):
     
     async def back(self, interaction: discord.Interaction) -> None:
         """Return to the admin panel without declaring a winner."""
-        if not has_privilege(self.session, interaction):
+        if not has_privilege(interaction):
             await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
             return
         await interaction.response.edit_message(embed=generate_embed(self.session), view=AdminView(self.session))
@@ -544,12 +621,12 @@ class AdminView(discord.ui.View):
             await interaction.response.send_message("You need an even amount of players to shuffle!", ephemeral=True)
             return
 
-        if not has_privilege(self.session, interaction):
+        if not has_privilege(interaction):
             await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
             return
         
-        rank_by_id, roles_by_id = await get_game_shuffle_data(self.session.joined, self.session.game)
-        team_a, team_b, assignments = balance_teams(self.session.game, self.session.joined, rank_by_id, roles_by_id)
+        elo_by_id, roles_by_id = await get_game_shuffle_data(self.session.joined, self.session.game)
+        team_a, team_b, assignments = balance_teams(self.session.game, self.session.joined, elo_by_id, roles_by_id)
         self.session.team_a = team_a
         self.session.team_b = team_b
         self.session.role_assignments = assignments
@@ -561,7 +638,7 @@ class AdminView(discord.ui.View):
     @discord.ui.button(label="Swap", style=discord.ButtonStyle.secondary)
     async def swap(self, button: discord.ui.Button, interaction: discord.Interaction) -> None:
         """Open the two-player swap select menu. Requires a shuffle to have happened first."""
-        if not has_privilege(self.session, interaction):
+        if not has_privilege(interaction):
             await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
             return
         if not self.session.role_assignments:
@@ -573,8 +650,8 @@ class AdminView(discord.ui.View):
     @discord.ui.button(label="Winner", style=discord.ButtonStyle.success)
     async def winner(self, button: discord.ui.Button, interaction: discord.Interaction) -> None:
         """Open the team picker to declare a winner. Requires a shuffle to have happened first."""
-        if not has_privilege(self.session, interaction):
-            await interaction.response.send_message("Youre not a game head! Feel free to apply though...", ephemeral=True)
+        if not has_privilege(interaction):
+            await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
             return
         if not self.session.role_assignments:
             await interaction.response.send_message("Shuffle first before deciding a winner!", ephemeral=True)
@@ -585,7 +662,7 @@ class AdminView(discord.ui.View):
     @discord.ui.button(label="Delete", style=discord.ButtonStyle.danger)
     async def delete(self, button: discord.ui.Button, interaction: discord.Interaction) -> None:
         """Cancel a game."""
-        if not has_privilege(self.session, interaction):
+        if not has_privilege(interaction):
             await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
             return
         
@@ -610,7 +687,7 @@ class CancelConfirmView(discord.ui.View):
 
     async def on_select(self, interaction: discord.Interaction) -> None:
         """Cancel the lobby if confirmed, otherwise return to the admin panel."""
-        if not has_privilege(self.session, interaction):
+        if not has_privilege(interaction):
             await interaction.response.send_message("You're not a game head! Feel free to apply though...", ephemeral=True)
             return
 

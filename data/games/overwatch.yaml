@@ -2,6 +2,7 @@ roles: [Tank, Damage, Support, Flex]
 tiers: [Bronze, Silver, Gold, Platinum, Diamond, Master, Grandmaster, Champion, Top 500]
 divisions: 5
 no_division_tiers: [Top 500]
+lobby_size: 10
 
 # Non-linear per-tier base points used to seed elo from rank (see utils/elo.py).
 rank_points:

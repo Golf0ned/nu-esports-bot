@@ -2,6 +2,7 @@ roles: [Top, Jungle, Mid, Bot, Support, Flex]
 tiers: [Iron, Bronze, Silver, Gold, Platinum, Emerald, Diamond, Master, Grandmaster, Challenger]
 divisions: 4
 no_division_tiers: [Master, Grandmaster, Challenger]
+lobby_size: 10
 
 # Non-linear per-tier base points used to seed elo from rank (see utils/elo.py).
 # Gaps widen at the top to reflect that Diamond->Master is a much bigger real skill

@@ -2,6 +2,7 @@ roles: [Duelist, Initiator, Controller, Sentinel, Flex]
 tiers: [Iron, Bronze, Silver, Gold, Platinum, Diamond, Ascendant, Immortal, Radiant]
 divisions: 3
 no_division_tiers: [Radiant]
+lobby_size: 10
 
 # Non-linear per-tier base points used to seed elo from rank (see utils/elo.py).
 rank_points:

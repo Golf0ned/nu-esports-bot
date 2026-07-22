@@ -12,6 +12,7 @@ GAME_CHOICES = list(config.game_data.keys())
 DEFAULT_TAG = {"Lobby": "🖱️", "Winner": "🏆"}
 TEAM_NAMES = [tuple(pair) for pair in config.matchmaking_data["team_names"]]
 ROLE_REQUIREMENTS = {game: data.get("role_requirements") or {} for game, data in config.game_data.items()}
+LOBBY_SIZE = {game: data.get("lobby_size", 10) for game, data in config.game_data.items()}
 RANK_JITTER = 200        # half-width of the jitter range for a player exactly at the lobby average
 JITTER_PULL_SCALE = 1500 # elo deviation from average that fully saturates the pull toward one side
 
@@ -24,13 +25,15 @@ def generate_embed(session: "MatchmakingSession") -> discord.Embed:
     """
     if session.role_assignments:
         return generate_match_embed(session)
+    lobby_size = LOBBY_SIZE[session.game]
     embed = discord.Embed(
         title=f"{session.game.title()} Lobby",
-        description=f"({len(session.joined)}/10)",
+        description=f"({len(session.joined)}/{lobby_size})",
         color = discord.Color.from_rgb(78,42,132),
     )
-    left_rows = ["-"] * 5
-    right_rows = ["-"] * 5
+    rows_per_column = lobby_size // 2
+    left_rows = ["-"] * rows_per_column
+    right_rows = ["-"] * rows_per_column
     for i, member in enumerate(session.joined):
         tag = session.tags.get(member.id, DEFAULT_TAG.get("Lobby"))
         entry = f"{tag} {member.display_name}"
@@ -441,7 +444,7 @@ class LobbyView(discord.ui.View):
     def __init__(self, session):
         super().__init__(timeout=None)
         self.session = session
-        self.join.disabled = len(session.joined) >= 10
+        self.join.disabled = len(session.joined) >= LOBBY_SIZE[session.game]
 
     @discord.ui.button(label="Join", style=discord.ButtonStyle.success)
     async def join(self, button: discord.ui.Button, interaction: discord.Interaction) -> None:
@@ -449,7 +452,7 @@ class LobbyView(discord.ui.View):
         if any(m.id == interaction.user.id for m in self.session.joined):
             await interaction.response.send_message("You've already joined!", ephemeral=True)
             return
-        if len(self.session.joined) >= 10:
+        if len(self.session.joined) >= LOBBY_SIZE[self.session.game]:
             await interaction.response.send_message("Lobby already full... :/", ephemeral=True)
             return
         

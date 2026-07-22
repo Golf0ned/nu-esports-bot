@@ -2,6 +2,7 @@ roles: []
 tiers: [Initiate, Seeker, Alchemist, Arcanist, Ritualist, Emissary, Archon, Oracle, Phantom, Ascendant, Eternus]
 divisions: 6
 no_division_tiers: [] # Tiers that aren't divisioned, like Challenger in League
+lobby_size: 12
 
 # Non-linear per-tier base points used to seed elo from rank (see utils/elo.py).
 # Gaps widen at the top to reflect that Diamond->Master is a much bigger real skill

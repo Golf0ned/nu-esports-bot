@@ -169,6 +169,30 @@ class Profile(commands.Cog):
     profile = discord.SlashCommandGroup("profile", "Profile tools")
     set_grp = profile.create_subgroup("set", "Set something on your profile")
 
+    @discord.slash_command(
+        name="profile-help",
+        description="Explains what each /profile command does",
+        guild_ids=[GUILD_ID],
+    )
+    async def profile_help(self, ctx: discord.ApplicationContext) -> None:
+        """Show a static help embed explaining every /profile subcommand."""
+        embed = discord.Embed(
+            title="Profile Commands",
+            description="Everything you can do with /profile:",
+            color=discord.Color.from_rgb(78, 42, 132),
+        )
+        embed.add_field(name="/profile view [user] [game]", value="See your (or someone else's) profile: bio, rank, roles, mains, and win/loss record.", inline=False)
+        embed.add_field(name="/profile set bio <bio>", value="Set your profile bio.", inline=False)
+        embed.add_field(name="/profile set picture [url] [position]", value="Set your profile's main image or thumbnail via a direct image URL. Clears if left blank. Defaults to main image.", inline=False)
+        embed.add_field(name="/profile set rank <game> <tier> [division]", value="Set your rank for a game. Defaults to the lowest.", inline=False)
+        embed.add_field(name="/profile set role <game>", value="Open a menu to pick your role(s) for a game.", inline=False)
+        embed.add_field(name="/profile set main <game>", value="Open a menu to set your mains for a game.", inline=False)
+        embed.add_field(name="/profile set primary <game> <primary>", value="Choose which of your mains shows as your profile thumbnail/splash art.", inline=False)
+        embed.add_field(name="/profile set tag [tag]", value="Set the emoji shown next to your name on your profile and in lobbies. Clears if left blank.", inline=False)
+        embed.add_field(name="/profile elo <user>", value="Show a player's elo per game. For game head use only.", inline=False)
+        embed.set_footer(text="🗝️ Key: /command <mandatory-arguments> [optional-arguments]")
+        await ctx.respond(embed=embed, ephemeral=True)
+
     @set_grp.command(
             name = "bio",
             guild_ids = [GUILD_ID]

@@ -18,6 +18,10 @@ rank_points:
 divisions_ascend:
   false
 
+# Seed elo for players who never set a rank. Deliberately below the club's
+# average so a wrong guess corrects upward instead of stomping lobbies.
+default_tier: Gold
+
 role_requirements:
   Tank: 1
   Damage: 2

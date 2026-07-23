@@ -47,19 +47,19 @@ def compute_rank_points(game: str, tier: str, division: int | None) -> float:
 def seed_elo(game: str, rank_value: int | None) -> float:
     """Pick a starting elo for a player with no elo row yet
 
-    Uses their current rank if they have one; falls back to this game's lowest
-    tier if they've never set a rank (safest assumption: unproven, not average)."""
+    Uses their current rank if they have one, else the game's `default_tier`.
+    Has to be deterministic since seeds get saved to profile_elo."""
     decoded = decode_rank_value(game, rank_value)
     if decoded is None:
         tiers = config.game_data[game]["tiers"]
         no_division_tiers = config.game_data[game]["no_division_tiers"]
         ascending = config.game_data[game]["divisions_ascend"]
-        lowest_tier = tiers[0]
-        if lowest_tier in no_division_tiers:
+        tier = config.game_data[game].get("default_tier", tiers[0])
+        if tier in no_division_tiers:
             division = None
         else:
             division = 1 if ascending else config.game_data[game]["divisions"]
-        return compute_rank_points(game, lowest_tier, division)
+        return compute_rank_points(game, tier, division)
     tier, division = decoded
     return compute_rank_points(game, tier, division)
 

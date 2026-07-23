@@ -1,3 +1,6 @@
+# PROJECT HAS MOVED
+https://github.com/nuesports/nu-esports-bot
+#
 <div align="center">
 <pre>
                 ████████  █████ ████                         

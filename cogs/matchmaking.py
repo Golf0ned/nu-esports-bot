@@ -141,6 +141,9 @@ def balance_teams(game: str,
     
     Returns (team_a, team_b, assignments), where assignments maps member id ->  lane/role.
     """
+    if not joined:
+        return [], [], {}
+
     requirements = list(ROLE_REQUIREMENTS[game].items())
     random.shuffle(requirements)
 
@@ -610,6 +613,10 @@ class AdminView(discord.ui.View):
     @discord.ui.button(label="Shuffle", style=discord.ButtonStyle.primary)
     async def shuffle(self, button: discord.ui.Button, interaction: discord.Interaction) -> None:
         """Fetch each player's rank/role data and re-balance the lobby into two teams."""
+        if not self.session.joined:
+            await interaction.response.send_message("Nobody's in the lobby yet!", ephemeral=True)
+            return
+
         if (len(self.session.joined) % 2) != 0:
             await interaction.response.send_message("You need an even amount of players to shuffle!", ephemeral=True)
             return
